@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  media-player:
+    build: .
+    ports:
+      - "3001:3001"
+    volumes:
+      # Database persistence
+      - ./database:/app/database
+      # Downloaded images
+      - ./public:/app/public
+      # Media library paths (add your own)
+      - ${MEDIA_PATH:-./media}:/media:ro
+    environment:
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - NODE_ENV=production
+      - PORT=3001
+      - DB_PATH=/app/database/database.sqlite
+      - DEFAULT_SCAN_PATHS=/media
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:3001/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  database:
