@@ -4,9 +4,11 @@
 
 import { Router } from 'express';
 import path from 'path';
+import fs from 'fs';
 import db, { getAll, getOne, run } from '../db.js';
 import { scanDirectory, scanAllPaths, cleanupMissingFiles } from '../scanner/fileScanner.js';
 import { enrichAllMedia, enrichMedia } from '../services/tmdbService.js';
+import { Media, SubtitleTrack, AudioTrack, PlaybackState } from '../types/db.js';
 
 const router = Router();
 
@@ -32,11 +34,14 @@ router.get('/', (req, res) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
+        const offset = (page - 1) * limit;
 
-        const type = req.query.type as string;
+        const type = req.query.type as string; // 'movie', 'tv', 'all'
         const sort = req.query.sort as string || 'added_at';
         const order = req.query.order as string || 'DESC';
         const search = req.query.search as string;
+        const groupBySeries = req.query.group_by_series === 'true';
+        const tmdbId = req.query.tmdb_id ? parseInt(req.query.tmdb_id as string) : undefined;
 
         let whereClause = '1=1';
         const params: unknown[] = [];
@@ -51,33 +56,77 @@ router.get('/', (req, res) => {
             params.push(`%${search}%`, `%${search}%`);
         }
 
+        if (tmdbId) {
+            whereClause += ' AND tmdb_id = ?';
+            params.push(tmdbId);
+        }
+
         // Validate sort column
         const validSorts = ['title', 'year', 'added_at', 'rating', 'release_date'];
         const sortColumn = validSorts.includes(sort) ? sort : 'added_at';
         const sortOrder = order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
-        // Get all matching media (we'll filter and paginate after)
-        const allMedia = getAll<{ file_path: string } & Record<string, unknown>>(
-            `SELECT 
-        id, file_path, file_name, title, year, media_type,
-        season_number, episode_number, episode_title,
-        tmdb_id, overview, poster_path, backdrop_path,
-        genres, rating, vote_count, runtime,
-        resolution, browser_compatible, has_subtitles,
-        duration_seconds, added_at
-      FROM media 
-      WHERE ${whereClause}
-      ORDER BY ${sortColumn} ${sortOrder}`,
-            params
+        // Grouping logic (Consolidated for both Count and Data queries)
+        // Group by tmdb_id for TV shows, otherwise by ID
+        const groupClause = groupBySeries
+            ? "GROUP BY CASE WHEN media_type = 'tv' AND tmdb_id IS NOT NULL THEN tmdb_id ELSE id END"
+            : "";
+
+        // Get total count for pagination
+        // When grouping, COUNT(*) counts rows in groups. We need to wrap in subquery or use DISTINCT kind of logic.
+        // Simplest valid way for SQLite with better-sqlite3:
+        let countSql: string;
+        if (groupBySeries) {
+            countSql = `SELECT COUNT(*) as count FROM (
+                SELECT 1 FROM media 
+                WHERE ${whereClause} 
+                ${groupClause}
+            ) as grouped`;
+        } else {
+            countSql = `SELECT COUNT(*) as count FROM media WHERE ${whereClause}`;
+        }
+
+        const countResult = getOne<{ count: number }>(countSql, params);
+        const total = countResult?.count || 0;
+
+        // Get paginated results
+        // Note: We don't filter by library paths here for performance. 
+        // We assume the DB only contains valid media from the scanner.
+        // Get paginated results - REVERTED TO SIMPLE QUERY WITHOUT JOIN
+        const paginatedMedia = getAll<Media>(
+            `SELECT * FROM media 
+            WHERE ${whereClause.replace(/m\./g, '')}
+            ${groupClause.replace(/m\./g, '')}
+            ORDER BY ${sortColumn.replace('m.', '')} ${sortOrder}
+            LIMIT ? OFFSET ?`,
+            [...params, limit, offset]
         );
 
-        // Filter to only show media in library paths
-        const filteredMedia = filterMediaByLibraryPaths(allMedia);
-        const total = filteredMedia.length;
+        // Fetch playback state for these items
+        if (paginatedMedia.length > 0) {
+            const mediaIds = paginatedMedia.map(m => m.id).join(',');
 
-        // Manual pagination
-        const offset = (page - 1) * limit;
-        const paginatedMedia = filteredMedia.slice(offset, offset + limit);
+            // Check if we have IDs (paranoia check)
+            if (mediaIds.length > 0) {
+                const states = getAll<PlaybackState>(
+                    `SELECT media_id, position_seconds, duration_seconds, completed 
+                     FROM playback_state 
+                     WHERE media_id IN (${mediaIds})`
+                );
+
+                // Merge state into media objects
+                const stateMap = new Map(states.map(s => [s.media_id, s]));
+
+                (paginatedMedia as any[]).forEach(m => {
+                    const s = stateMap.get(m.id);
+                    if (s) {
+                        m.progress_seconds = s.position_seconds;
+                        m.state_total = s.duration_seconds;
+                        m.completed = s.completed;
+                    }
+                });
+            }
+        }
 
         res.json({
             data: paginatedMedia,
@@ -99,7 +148,7 @@ router.get('/:id', (req, res) => {
     try {
         const id = parseInt(req.params.id);
 
-        const media = getOne<unknown>(
+        const media = getOne<Media>(
             `SELECT * FROM media WHERE id = ?`,
             [id]
         );
@@ -109,25 +158,25 @@ router.get('/:id', (req, res) => {
         }
 
         // Get subtitle tracks
-        const subtitleTracks = getAll<unknown>(
+        const subtitleTracks = getAll<SubtitleTrack>(
             `SELECT * FROM subtitle_tracks WHERE media_id = ?`,
             [id]
         );
 
         // Get audio tracks
-        const audioTracks = getAll<unknown>(
+        const audioTracks = getAll<AudioTrack>(
             `SELECT * FROM audio_tracks WHERE media_id = ?`,
             [id]
         );
 
         // Get playback state
-        const playbackState = getOne<unknown>(
+        const playbackState = getOne<PlaybackState>(
             `SELECT * FROM playback_state WHERE media_id = ?`,
             [id]
         );
 
         res.json({
-            ...media as object,
+            ...media,
             subtitle_tracks: subtitleTracks,
             audio_tracks: audioTracks,
             playback_state: playbackState,
@@ -192,20 +241,40 @@ router.post('/:id/enrich', async (req, res) => {
     }
 });
 
-// DELETE /api/media/:id - Remove media from library
+// DELETE /api/media/:id - Remove media from library and disk
 router.delete('/:id', (req, res) => {
     try {
         const id = parseInt(req.params.id);
 
-        const media = getOne<{ id: number }>('SELECT id FROM media WHERE id = ?', [id]);
+        const media = getOne<{ id: number, file_path: string, converted_path: string | null }>('SELECT id, file_path, converted_path FROM media WHERE id = ?', [id]);
 
         if (!media) {
             return res.status(404).json({ error: 'Media not found' });
         }
 
+        // Delete form disk
+        try {
+            if (media.file_path && fs.existsSync(media.file_path)) {
+                fs.unlinkSync(media.file_path);
+                console.log(`Deleted file: ${media.file_path}`);
+            }
+            if (media.converted_path && fs.existsSync(media.converted_path)) {
+                fs.unlinkSync(media.converted_path);
+                console.log(`Deleted converted file: ${media.converted_path}`);
+            }
+        } catch (fileErr) {
+            console.error('Error removing file from disk:', fileErr);
+            // Optionally continue to delete from DB or error out. 
+            // Better to error out or warn? 
+            // If we cant delete file, we probably shouldn't remove from DB if the user intent is "delete file".
+            // But if the file is already gone, we should remove from DB.
+            // Let's assume if it fails it might be permissions.
+            return res.status(500).json({ error: 'Failed to delete file from disk', details: (fileErr as Error).message });
+        }
+
         run('DELETE FROM media WHERE id = ?', [id]);
 
-        res.json({ success: true, message: 'Media removed from library' });
+        res.json({ success: true, message: 'Media removed from library and disk' });
     } catch (err) {
         console.error('Delete error:', err);
         res.status(500).json({ error: 'Failed to delete media' });

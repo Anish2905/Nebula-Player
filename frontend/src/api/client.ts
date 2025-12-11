@@ -30,6 +30,8 @@ export const mediaApi = {
         search?: string;
         sort?: string;
         order?: string;
+        tmdb_id?: number;
+        group_by_series?: boolean;
     }) => api.get('/media', { params }),
 
     getById: (id: number) => api.get(`/media/${id}`),
@@ -102,6 +104,9 @@ export const settingsApi = {
 
     deleteScanPath: (id: number) => api.delete(`/settings/scan-paths/${id}`),
 
+    browseFolders: (path?: string) =>
+        api.get('/settings/browse-folders', { params: { path } }),
+
     clearHistory: () => api.post('/settings/clear-history'),
 
     clearTmdbCache: () => api.post('/settings/clear-tmdb-cache'),
@@ -112,7 +117,12 @@ export const settingsApi = {
 
 // Video API
 export const videoApi = {
-    getStreamUrl: (id: number) => `/api/video/${id}`,
+    getStreamUrl: (id: number, seekTime?: number) => {
+        if (seekTime && seekTime > 0) {
+            return `/api/video/${id}?t=${seekTime}`;
+        }
+        return `/api/video/${id}`;
+    },
 
     getSubtitleUrl: (mediaId: number, trackId: number) =>
         `/api/video/${mediaId}/subtitle/${trackId}`,

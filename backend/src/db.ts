@@ -1,8 +1,8 @@
 /**
- * Database wrapper using sql.js (pure JavaScript SQLite)
+ * Database wrapper using better-sqlite3 (Native SQLite for Node.js)
  */
 
-import initSqlJs, { Database as SqlJsDatabase } from 'sql.js';
+import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,33 +12,11 @@ const __dirname = path.dirname(__filename);
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'database.sqlite');
 
-let db: SqlJsDatabase | null = null;
+let db: Database.Database | null = null;
 
 // Initialize database
-export async function initDatabase(): Promise<SqlJsDatabase> {
+export function initDatabase(): Database.Database {
     if (db) return db;
-
-    const SQL = await initSqlJs();
-
-    // Load existing database or create new one
-    if (fs.existsSync(DB_PATH)) {
-        const buffer = fs.readFileSync(DB_PATH);
-        db = new SQL.Database(buffer);
-    } else {
-        db = new SQL.Database();
-    }
-
-    // Enable WAL mode equivalent (no-op for sql.js but good for documentation)
-    db.run('PRAGMA foreign_keys = ON');
-
-    return db;
-}
-
-// Save database to disk
-export function saveDatabase(): void {
-    if (!db) return;
-    const data = db.export();
-    const buffer = Buffer.from(data);
 
     // Ensure directory exists
     const dir = path.dirname(DB_PATH);
@@ -46,13 +24,38 @@ export function saveDatabase(): void {
         fs.mkdirSync(dir, { recursive: true });
     }
 
-    fs.writeFileSync(DB_PATH, buffer);
+    // Open database
+    db = new Database(DB_PATH, { verbose: process.env.NODE_ENV === 'development' ? console.log : undefined });
+
+    // Enable WAL mode for concurrency and performance
+    db.pragma('journal_mode = WAL');
+    db.pragma('foreign_keys = ON');
+
+    // Migration: Add converted_path column if it doesn't exist
+    try {
+        const tableInfo = db.prepare("PRAGMA table_info(media)").all() as any[];
+
+        if (!tableInfo.some(col => col.name === 'converted_path')) {
+            db.prepare('ALTER TABLE media ADD COLUMN converted_path TEXT').run();
+            console.log('✅ Added converted_path column to media table');
+        }
+
+        if (!tableInfo.some(col => col.name === 'episode_title')) {
+            db.prepare('ALTER TABLE media ADD COLUMN episode_title TEXT').run();
+            console.log('✅ Added episode_title column to media table');
+        }
+    } catch (e) {
+        console.error('Migration error:', e);
+    }
+
+    return db;
 }
 
 // Get the database instance
-export function getDb(): SqlJsDatabase {
+export function getDb(): Database.Database {
     if (!db) {
-        throw new Error('Database not initialized. Call initDatabase() first.');
+        // Auto-initialize if not ready
+        return initDatabase();
     }
     return db;
 }
@@ -60,60 +63,50 @@ export function getDb(): SqlJsDatabase {
 // Helper: Get one row
 export function getOne<T>(sql: string, params: unknown[] = []): T | undefined {
     const database = getDb();
-    const stmt = database.prepare(sql);
-    stmt.bind(params);
-
-    if (stmt.step()) {
-        const row = stmt.getAsObject() as T;
-        stmt.free();
-        return row;
+    try {
+        return database.prepare(sql).get(...params) as T | undefined;
+    } catch (err) {
+        console.error('DB Error in getOne:', err);
+        throw err;
     }
-
-    stmt.free();
-    return undefined;
 }
 
 // Helper: Get all rows
 export function getAll<T>(sql: string, params: unknown[] = []): T[] {
     const database = getDb();
-    const results: T[] = [];
-    const stmt = database.prepare(sql);
-    stmt.bind(params);
-
-    while (stmt.step()) {
-        results.push(stmt.getAsObject() as T);
+    try {
+        return database.prepare(sql).all(...params) as T[];
+    } catch (err) {
+        console.error('DB Error in getAll:', err);
+        throw err;
     }
-
-    stmt.free();
-    return results;
 }
 
 // Helper: Run SQL (INSERT, UPDATE, DELETE)
-export function run(sql: string, params: unknown[] = []): void {
+export function run(sql: string, params: unknown[] = []): Database.RunResult {
     const database = getDb();
-    database.run(sql, params);
-    saveDatabase(); // Auto-save after modifications
+    try {
+        return database.prepare(sql).run(...params);
+    } catch (err) {
+        console.error('DB Error in run:', err);
+        throw err;
+    }
 }
 
 // Helper: Insert and return last ID
 export function insert(sql: string, params: unknown[] = []): number {
-    const database = getDb();
-    database.run(sql, params);
-    const result = database.exec('SELECT last_insert_rowid() as id');
-    saveDatabase();
-    return result[0]?.values[0]?.[0] as number || 0;
+    const result = run(sql, params);
+    return result.lastInsertRowid as number;
 }
 
-// Helper: Execute raw SQL (for migrations)
+// Helper: Execute raw SQL
 export function exec(sql: string): void {
     const database = getDb();
     database.exec(sql);
-    saveDatabase();
 }
 
 export default {
     initDatabase,
-    saveDatabase,
     getDb,
     getOne,
     getAll,

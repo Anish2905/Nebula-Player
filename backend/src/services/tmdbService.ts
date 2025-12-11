@@ -3,7 +3,7 @@
  */
 
 import axios from 'axios';
-import db, { getOne, run, insert } from '../db.js';
+import { getOne, getAll, run } from '../db.js';
 
 const TMDB_API_KEY = process.env.TMDB_API_KEY || '';
 const TMDB_BASE_URL = process.env.TMDB_BASE_URL || 'https://api.themoviedb.org/3';
@@ -82,6 +82,21 @@ interface TMDBTVDetails {
     };
 }
 
+interface TMDBEpisodeDetails {
+    id: number;
+    name: string;
+    overview: string;
+    air_date: string;
+    episode_number: number;
+    season_number: number;
+    still_path: string;
+    vote_average: number;
+    vote_count: number;
+    runtime: number;
+    crew?: { id: number; name: string; job: string }[];
+    guest_stars?: { id: number; name: string; character: string; profile_path?: string }[];
+}
+
 export interface TMDBMetadata {
     tmdb_id: number;
     tmdb_type: 'movie' | 'tv';
@@ -99,6 +114,8 @@ export interface TMDBMetadata {
     rating?: number;
     vote_count?: number;
     match_confidence: number;
+    season_number?: number;
+    episode_number?: number;
 }
 
 /**
@@ -166,6 +183,7 @@ export async function searchTMDB(
     await throttle();
 
     try {
+        console.log(`🎬 TMDB Search: "${title}" (${type}, ${year})`);
         // If type is unknown, search both movies and TV
         if (type === 'unknown') {
             const [movieResults, tvResults] = await Promise.all([
@@ -186,7 +204,9 @@ export async function searchTMDB(
             params[type === 'movie' ? 'year' : 'first_air_date_year'] = year.toString();
         }
 
+        console.log(`   Calling TMDB: ${endpoint} with params`, JSON.stringify(params));
         const response = await axios.get(`${TMDB_BASE_URL}${endpoint}`, { params });
+        console.log(`   ✅ TMDB Response: Found ${response.data.results?.length || 0} results`);
         return response.data.results || [];
     } catch (err) {
         console.error('TMDB search error:', err);
@@ -235,18 +255,45 @@ async function getTVDetails(id: number): Promise<TMDBTVDetails | null> {
 }
 
 /**
+ * Get detailed episode information
+ */
+async function getEpisodeDetails(tvId: number, season: number, episode: number): Promise<TMDBEpisodeDetails | null> {
+    await throttle();
+
+    try {
+        const response = await axios.get(`${TMDB_BASE_URL}/tv/${tvId}/season/${season}/episode/${episode}`, {
+            params: {
+                api_key: TMDB_API_KEY,
+                append_to_response: 'credits',
+            },
+        });
+        return response.data;
+    } catch (err) {
+        // Simple error logging
+        if (axios.isAxiosError(err) && err.response?.status === 404) {
+            console.log(`Episode not found on TMDB: TV ${tvId} S${season}E${episode}`);
+        } else {
+            console.error('TMDB episode details error:', err);
+        }
+        return null;
+    }
+}
+
+/**
  * Fetch full metadata for a media item
  */
 export async function fetchMetadata(
     title: string,
     type: 'movie' | 'tv' | 'unknown',
-    year?: number
+    year?: number,
+    season?: number,
+    episode?: number
 ): Promise<TMDBMetadata | null> {
-    // Check cache first
-    const cacheKey = `${type}:${title}:${year || ''}`;
+    // Check cache first (include season/episode in key)
+    const exactCacheKey = `${type}:${title}:${year || ''}:${season || ''}:${episode || ''}`;
     const cached = getOne<{ data: string; expires_at: string }>(
         'SELECT data, expires_at FROM tmdb_cache WHERE cache_key = ?',
-        [cacheKey]
+        [exactCacheKey]
     );
 
     if (cached && new Date(cached.expires_at) > new Date()) {
@@ -306,31 +353,45 @@ export async function fetchMetadata(
             match_confidence: bestConfidence,
         };
     } else {
-        const details = await getTVDetails(bestMatch.id);
-        if (!details) return null;
+        // It's a TV show
+        const showDetails = await getTVDetails(bestMatch.id);
+        if (!showDetails) return null;
 
-        const creator = details.credits?.crew?.find(c => c.job === 'Creator' || c.job === 'Executive Producer');
+        let episodeDetails: TMDBEpisodeDetails | null = null;
+        if (season && episode) {
+            episodeDetails = await getEpisodeDetails(bestMatch.id, season, episode);
+        }
 
+        const creator = showDetails.credits?.crew?.find(c => c.job === 'Creator' || c.job === 'Executive Producer');
+
+        // Use episode specific info if available, fallback to show info
         metadata = {
-            tmdb_id: details.id,
+            tmdb_id: showDetails.id,
             tmdb_type: 'tv',
-            title: details.name,
-            overview: details.overview,
-            tagline: details.tagline,
-            runtime: details.episode_run_time?.[0],
-            release_date: details.first_air_date,
-            poster_path: details.poster_path ? `${TMDB_IMAGE_BASE_URL}/w500${details.poster_path}` : undefined,
-            backdrop_path: details.backdrop_path ? `${TMDB_IMAGE_BASE_URL}/w1280${details.backdrop_path}` : undefined,
-            genres: details.genres?.map(g => g.name) || [],
-            cast: details.credits?.cast?.slice(0, 10).map(c => ({
+            title: episodeDetails?.name || showDetails.name, // Episode name or Show name
+            overview: episodeDetails?.overview || showDetails.overview,
+            tagline: showDetails.tagline,
+            runtime: episodeDetails?.runtime || showDetails.episode_run_time?.[0],
+            release_date: episodeDetails?.air_date || showDetails.first_air_date,
+            // Prefer episode still for backdrop/poster context if needed, but usually poster is show poster
+            // We use still_path as backdrop for episodes in many UIs, or a specific field
+            poster_path: showDetails.poster_path ? `${TMDB_IMAGE_BASE_URL}/w500${showDetails.poster_path}` : undefined,
+            // Use episode still as backdrop if available
+            backdrop_path: episodeDetails?.still_path
+                ? `${TMDB_IMAGE_BASE_URL}/original${episodeDetails.still_path}`
+                : (showDetails.backdrop_path ? `${TMDB_IMAGE_BASE_URL}/w1280${showDetails.backdrop_path}` : undefined),
+            genres: showDetails.genres?.map(g => g.name) || [],
+            cast: (episodeDetails?.guest_stars || showDetails.credits?.cast)?.slice(0, 10).map(c => ({
                 name: c.name,
                 character: c.character,
                 profile_path: c.profile_path ? `${TMDB_IMAGE_BASE_URL}/w185${c.profile_path}` : undefined,
             })) || [],
             director: creator?.name,
-            rating: details.vote_average,
-            vote_count: details.vote_count,
+            rating: episodeDetails?.vote_average || showDetails.vote_average,
+            vote_count: episodeDetails?.vote_count || showDetails.vote_count,
             match_confidence: bestConfidence,
+            season_number: season,
+            episode_number: episode
         };
     }
 
@@ -345,7 +406,7 @@ export async function fetchMetadata(
       data = ?,
       cached_at = CURRENT_TIMESTAMP,
       expires_at = ?
-  `, [cacheKey, metadata.tmdb_id, JSON.stringify(metadata), expiresAt.toISOString(), JSON.stringify(metadata), expiresAt.toISOString()]);
+  `, [exactCacheKey, metadata.tmdb_id, JSON.stringify(metadata), expiresAt.toISOString(), JSON.stringify(metadata), expiresAt.toISOString()]);
 
     return metadata;
 }
@@ -354,8 +415,8 @@ export async function fetchMetadata(
  * Enrich a media record with TMDB metadata
  */
 export async function enrichMedia(mediaId: number): Promise<boolean> {
-    const media = getOne<{ id: number; title: string; year: number; media_type: string }>(
-        'SELECT id, title, year, media_type FROM media WHERE id = ?',
+    const media = getOne<{ id: number; title: string; year: number; media_type: string; season_number?: number; episode_number?: number }>(
+        'SELECT id, title, year, media_type, season_number, episode_number FROM media WHERE id = ?',
         [mediaId]
     );
 
@@ -366,7 +427,9 @@ export async function enrichMedia(mediaId: number): Promise<boolean> {
     const metadata = await fetchMetadata(
         media.title,
         media.media_type as 'movie' | 'tv' | 'unknown',
-        media.year
+        media.year,
+        media.season_number,
+        media.episode_number
     );
 
     if (!metadata) {
@@ -378,7 +441,9 @@ export async function enrichMedia(mediaId: number): Promise<boolean> {
     UPDATE media SET
       tmdb_id = ?,
       tmdb_type = ?,
+      media_type = ?,
       imdb_id = ?,
+      episode_title = ?, -- Store episode title separately if it's TV
       overview = ?,
       tagline = ?,
       runtime = ?,
@@ -397,7 +462,9 @@ export async function enrichMedia(mediaId: number): Promise<boolean> {
   `, [
         metadata.tmdb_id,
         metadata.tmdb_type,
+        metadata.tmdb_type, // Also update media_type to match TMDB type
         metadata.imdb_id || null,
+        (metadata.tmdb_type === 'tv' && metadata.title !== media.title) ? metadata.title : null, // Use this for episode_title
         metadata.overview || null,
         metadata.tagline || null,
         metadata.runtime || null,
@@ -419,26 +486,34 @@ export async function enrichMedia(mediaId: number): Promise<boolean> {
 /**
  * Enrich all media without TMDB data
  */
-export async function enrichAllMedia(limit: number = 50): Promise<number> {
-    const media = db.prepare(`
-    SELECT id, title, year, media_type 
-    FROM media 
-    WHERE tmdb_id IS NULL AND match_method != 'failed'
-    LIMIT ?
-  `).all(limit) as { id: number; title: string; year: number; media_type: string }[];
+export async function enrichAllMedia(batchSize: number = 20): Promise<number> {
+    let totalEnriched = 0;
 
-    let enriched = 0;
+    while (true) {
+        const media = getAll<{ id: number; title: string; year: number; media_type: string }>(
+            `SELECT id, title, year, media_type 
+             FROM media 
+             WHERE (tmdb_id IS NULL OR (media_type = 'tv' AND episode_title IS NULL))
+             AND match_method IS NULL
+             LIMIT ?`,
+            [batchSize]
+        );
 
-    for (const item of media) {
-        console.log(`🎬 Enriching: ${item.title}${item.year ? ` (${item.year})` : ''}`);
-        const success = await enrichMedia(item.id);
-        if (success) {
-            enriched++;
-            console.log('   ✅ Found match');
-        } else {
-            console.log('   ❌ No match');
+        if (media.length === 0) break;
+
+        console.log(`🎬 Processing batch of ${media.length} items for enrichment...`);
+
+        for (const item of media) {
+            console.log(`   Enriching: ${item.title}${item.year ? ` (${item.year})` : ''}`);
+            const success = await enrichMedia(item.id);
+            if (success) {
+                totalEnriched++;
+                console.log('   ✅ Found match');
+            } else {
+                console.log('   ❌ No match');
+            }
         }
     }
 
-    return enriched;
+    return totalEnriched;
 }

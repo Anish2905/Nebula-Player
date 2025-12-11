@@ -56,6 +56,7 @@ export interface SubtitleTrack {
     track_index: number;
     language_code: string;
     language_name: string;
+    label?: string;
     title?: string;
     codec: string;
     is_embedded: number;

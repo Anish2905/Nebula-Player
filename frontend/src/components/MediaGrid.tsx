@@ -14,7 +14,7 @@ export default function MediaGrid({ media, loading = false, emptyMessage = 'No m
                 {Array.from({ length: 12 }).map((_, i) => (
                     <div
                         key={i}
-                        className="aspect-[2/3] rounded-md skeleton"
+                        className="aspect-2/3 rounded-md skeleton"
                     />
                 ))}
             </div>
@@ -44,8 +44,14 @@ export default function MediaGrid({ media, loading = false, emptyMessage = 'No m
 
     return (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {media.map((item) => (
-                <MediaCard key={item.id} media={item} />
+            {media.map((item, index) => (
+                <div
+                    key={item.id}
+                    className="animate-fadeInUp opacity-0"
+                    style={{ animationDelay: `${Math.min(index * 0.05, 0.4)}s`, animationFillMode: 'forwards' }}
+                >
+                    <MediaCard media={item} />
+                </div>
             ))}
         </div>
     );

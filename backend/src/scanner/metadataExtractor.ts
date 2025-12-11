@@ -27,6 +27,8 @@ export interface SubtitleTrack {
     codec: string;
     isDefault: boolean;
     isForced: boolean;
+    isEmbedded: boolean;
+    externalPath?: string;
 }
 
 export interface AudioTrack {
@@ -139,6 +141,7 @@ export function extractMetadata(filePath: string): Promise<VideoMetadata> {
                     codec: s.codec_name || 'unknown',
                     isDefault: s.disposition?.default === 1,
                     isForced: s.disposition?.forced === 1,
+                    isEmbedded: true,
                 })),
                 audioTracks: audioStreams.map((s, i) => ({
                     index: s.index,
@@ -148,8 +151,8 @@ export function extractMetadata(filePath: string): Promise<VideoMetadata> {
                     codec: s.codec_name || 'unknown',
                     channels: s.channels || 2,
                     channelLayout: s.channel_layout,
-                    bitrate: s.bit_rate ? Math.round(parseInt(s.bit_rate) / 1000) : undefined,
-                    sampleRate: s.sample_rate ? parseInt(s.sample_rate) : undefined,
+                    bitrate: s.bit_rate ? Math.round(Number(s.bit_rate) / 1000) : undefined,
+                    sampleRate: s.sample_rate ? Number(s.sample_rate) : undefined,
                     isDefault: s.disposition?.default === 1,
                 })),
             };

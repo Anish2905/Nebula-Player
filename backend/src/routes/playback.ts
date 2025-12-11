@@ -5,18 +5,9 @@
 import { Router } from 'express';
 import path from 'path';
 import { getOne, getAll, run, insert } from '../db.js';
+import { PlaybackState } from '../types/db.js';
 
 const router = Router();
-
-interface PlaybackState {
-    media_id: number;
-    position_seconds: number;
-    duration_seconds: number;
-    progress_percent: number;
-    completed: number;
-    last_watched_at: string;
-    watch_count: number;
-}
 
 // Helper: Get allowed library paths
 function getAllowedPaths(): string[] {

@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Play, Info } from 'lucide-react';
+import { Play } from 'lucide-react';
 import type { Media } from '../types';
 
 interface MediaCardProps {
@@ -24,7 +24,7 @@ export default function MediaCard({ media, showProgress = true }: MediaCardProps
     return (
         <Link
             to={`/media/${media.id}`}
-            className="media-card relative block aspect-[2/3] rounded-md overflow-hidden bg-[var(--bg-card)] group"
+            className="media-card relative block aspect-2/3 rounded-md overflow-hidden bg-(--bg-card) group"
         >
             {/* Poster Image */}
             {media.poster_path ? (
@@ -35,7 +35,7 @@ export default function MediaCard({ media, showProgress = true }: MediaCardProps
                     loading="lazy"
                 />
             ) : (
-                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-800 to-gray-900">
+                <div className="w-full h-full flex items-center justify-center bg-linear-to-br from-gray-800 to-gray-900">
                     <span className="text-gray-400 text-sm text-center px-2">
                         {media.title}
                     </span>

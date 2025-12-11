@@ -29,7 +29,7 @@ export default function FilterSidebar({
     const hasFilters = filters.genre || filters.year || filters.resolution || filters.type;
 
     return (
-        <div className={`bg-[var(--bg-secondary)] p-4 rounded-lg ${isMobile ? 'w-full' : 'w-64'}`}>
+        <div className={`bg-(--bg-secondary) p-4 rounded-lg ${isMobile ? 'w-full' : 'w-64'}`}>
             <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-white">Filters</h3>
                 <div className="flex gap-2">
@@ -55,7 +55,7 @@ export default function FilterSidebar({
                 <select
                     value={filters.type || 'all'}
                     onChange={(e) => handleChange('type', e.target.value === 'all' ? undefined : e.target.value)}
-                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-gray-700 rounded text-white focus:outline-none focus:border-gray-500"
+                    className="w-full px-3 py-2 bg-(--bg-card) border border-gray-700 rounded text-white focus:outline-none focus:border-gray-500"
                 >
                     <option value="all">All</option>
                     <option value="movie">Movies</option>
@@ -69,7 +69,7 @@ export default function FilterSidebar({
                 <select
                     value={filters.genre || ''}
                     onChange={(e) => handleChange('genre', e.target.value)}
-                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-gray-700 rounded text-white focus:outline-none focus:border-gray-500"
+                    className="w-full px-3 py-2 bg-(--bg-card) border border-gray-700 rounded text-white focus:outline-none focus:border-gray-500"
                 >
                     <option value="">All Genres</option>
                     {genres.map((genre) => (
@@ -86,7 +86,7 @@ export default function FilterSidebar({
                 <select
                     value={filters.year || ''}
                     onChange={(e) => handleChange('year', e.target.value ? parseInt(e.target.value) : undefined)}
-                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-gray-700 rounded text-white focus:outline-none focus:border-gray-500"
+                    className="w-full px-3 py-2 bg-(--bg-card) border border-gray-700 rounded text-white focus:outline-none focus:border-gray-500"
                 >
                     <option value="">All Years</option>
                     {years.map((year) => (
@@ -103,7 +103,7 @@ export default function FilterSidebar({
                 <select
                     value={filters.resolution || ''}
                     onChange={(e) => handleChange('resolution', e.target.value)}
-                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-gray-700 rounded text-white focus:outline-none focus:border-gray-500"
+                    className="w-full px-3 py-2 bg-(--bg-card) border border-gray-700 rounded text-white focus:outline-none focus:border-gray-500"
                 >
                     <option value="">All Resolutions</option>
                     <option value="4K">4K</option>
@@ -119,7 +119,7 @@ export default function FilterSidebar({
                 <select
                     value={filters.sort || 'rating'}
                     onChange={(e) => handleChange('sort', e.target.value)}
-                    className="w-full px-3 py-2 bg-[var(--bg-card)] border border-gray-700 rounded text-white focus:outline-none focus:border-gray-500"
+                    className="w-full px-3 py-2 bg-(--bg-card) border border-gray-700 rounded text-white focus:outline-none focus:border-gray-500"
                 >
                     <option value="rating">Rating</option>
                     <option value="title">Title</option>
@@ -135,8 +135,8 @@ export default function FilterSidebar({
                     <button
                         onClick={() => handleChange('order', 'DESC')}
                         className={`flex-1 py-2 px-3 rounded text-sm ${filters.order !== 'ASC'
-                                ? 'bg-[var(--accent)] text-white'
-                                : 'bg-[var(--bg-card)] text-gray-400'
+                            ? 'bg-(--accent) text-white'
+                            : 'bg-(--bg-card) text-gray-400'
                             }`}
                     >
                         Desc
@@ -144,8 +144,8 @@ export default function FilterSidebar({
                     <button
                         onClick={() => handleChange('order', 'ASC')}
                         className={`flex-1 py-2 px-3 rounded text-sm ${filters.order === 'ASC'
-                                ? 'bg-[var(--accent)] text-white'
-                                : 'bg-[var(--bg-card)] text-gray-400'
+                            ? 'bg-(--accent) text-white'
+                            : 'bg-(--bg-card) text-gray-400'
                             }`}
                     >
                         Asc

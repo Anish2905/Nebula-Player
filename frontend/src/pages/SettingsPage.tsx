@@ -1,8 +1,20 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Plus, Trash2, RefreshCw, Folder, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Plus, Trash2, RefreshCw, Folder, AlertTriangle, ChevronRight, HardDrive, X, Check } from 'lucide-react';
 import { settingsApi, mediaApi } from '../api/client';
 import type { ScanPath } from '../types';
+
+interface FolderItem {
+    name: string;
+    path: string;
+    type: 'drive' | 'folder';
+}
+
+interface BrowseResult {
+    path: string;
+    parent: string | null;
+    items: FolderItem[];
+}
 
 export default function SettingsPage() {
     const [scanPaths, setScanPaths] = useState<ScanPath[]>([]);
@@ -12,6 +24,12 @@ export default function SettingsPage() {
     const [scanning, setScanning] = useState(false);
     const [saving, setSaving] = useState(false);
     const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+    // Folder browser state
+    const [showBrowser, setShowBrowser] = useState(false);
+    const [browseData, setBrowseData] = useState<BrowseResult | null>(null);
+    const [browseLoading, setBrowseLoading] = useState(false);
+    const [selectedPath, setSelectedPath] = useState('');
 
     useEffect(() => {
         loadData();
@@ -37,13 +55,16 @@ export default function SettingsPage() {
         setTimeout(() => setMessage(null), 3000);
     };
 
-    const handleAddPath = async () => {
-        if (!newPath.trim()) return;
+    const handleAddPath = async (pathToAdd?: string) => {
+        const finalPath = pathToAdd || newPath.trim();
+        if (!finalPath) return;
 
         setSaving(true);
         try {
-            await settingsApi.addScanPath(newPath.trim());
+            await settingsApi.addScanPath(finalPath);
             setNewPath('');
+            setShowBrowser(false);
+            setSelectedPath('');
             await loadData();
             showMessage('success', 'Path added successfully');
         } catch (err: any) {
@@ -54,8 +75,6 @@ export default function SettingsPage() {
     };
 
     const handleDeletePath = async (id: number) => {
-        if (!confirm('Remove this library path?')) return;
-
         try {
             await settingsApi.deleteScanPath(id);
             await loadData();
@@ -114,16 +133,63 @@ export default function SettingsPage() {
         }
     };
 
+    // Folder browser functions
+    const openFolderBrowser = async () => {
+        setShowBrowser(true);
+        setBrowseLoading(true);
+        try {
+            const res = await settingsApi.browseFolders();
+            setBrowseData(res.data);
+            setSelectedPath(res.data.path || '');
+        } catch (err) {
+            showMessage('error', 'Failed to browse folders');
+            setShowBrowser(false);
+        } finally {
+            setBrowseLoading(false);
+        }
+    };
+
+    const navigateToFolder = async (folderPath: string) => {
+        setBrowseLoading(true);
+        try {
+            const res = await settingsApi.browseFolders(folderPath);
+            setBrowseData(res.data);
+            setSelectedPath(res.data.path || '');
+        } catch (err) {
+            showMessage('error', 'Failed to browse folder');
+        } finally {
+            setBrowseLoading(false);
+        }
+    };
+
+    const navigateUp = async () => {
+        if (browseData?.parent) {
+            await navigateToFolder(browseData.parent);
+        } else {
+            // Go back to drives view
+            setBrowseLoading(true);
+            try {
+                const res = await settingsApi.browseFolders();
+                setBrowseData(res.data);
+                setSelectedPath('');
+            } catch (err) {
+                showMessage('error', 'Failed to browse folders');
+            } finally {
+                setBrowseLoading(false);
+            }
+        }
+    };
+
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
-                <div className="w-8 h-8 border-4 border-t-[var(--accent)] border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin" />
+                <div className="loading-spinner" />
             </div>
         );
     }
 
     return (
-        <div className="min-h-screen px-8 py-6 max-w-4xl mx-auto">
+        <div className="min-h-screen px-8 py-6 max-w-4xl mx-auto animate-fadeIn">
             {/* Header */}
             <div className="flex items-center gap-4 mb-8">
                 <Link to="/" className="text-gray-400 hover:text-white transition-colors">
@@ -135,10 +201,111 @@ export default function SettingsPage() {
             {/* Message Toast */}
             {message && (
                 <div
-                    className={`fixed top-4 right-4 px-4 py-3 rounded-lg shadow-lg z-50 ${message.type === 'success' ? 'bg-green-600' : 'bg-red-600'
-                        } text-white`}
+                    className={`fixed top-4 right-4 px-5 py-4 rounded-xl shadow-2xl z-50 animate-fadeInUp flex items-center gap-3 ${message.type === 'success'
+                        ? 'bg-linear-to-r from-green-600 to-green-700 border border-green-500'
+                        : 'bg-linear-to-r from-red-600 to-red-700 border border-red-500'
+                        } text-white min-w-[280px]`}
                 >
-                    {message.text}
+                    {message.type === 'success' ? (
+                        <Check className="w-5 h-5 shrink-0" />
+                    ) : (
+                        <AlertTriangle className="w-5 h-5 shrink-0" />
+                    )}
+                    <span className="font-medium">{message.text}</span>
+                </div>
+            )}
+
+            {/* Folder Browser Modal */}
+            {showBrowser && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 modal-backdrop">
+                    <div className="bg-(--bg-secondary) rounded-xl w-full max-w-2xl max-h-[80vh] flex flex-col animate-fadeInScale">
+                        {/* Modal Header */}
+                        <div className="flex items-center justify-between p-4 border-b border-gray-700">
+                            <h3 className="text-xl font-semibold text-white">Select Folder</h3>
+                            <button
+                                onClick={() => setShowBrowser(false)}
+                                className="text-gray-400 hover:text-white transition-colors"
+                            >
+                                <X className="w-6 h-6" />
+                            </button>
+                        </div>
+
+                        {/* Current Path */}
+                        <div className="px-4 py-3 bg-(--bg-card) border-b border-gray-700">
+                            <div className="flex items-center gap-2">
+                                {browseData?.parent !== null && browseData?.path && (
+                                    <button
+                                        onClick={navigateUp}
+                                        className="text-sm text-gray-400 hover:text-white transition-colors"
+                                    >
+                                        ← Back
+                                    </button>
+                                )}
+                                {!browseData?.path && (
+                                    <span className="text-gray-400 text-sm">Select a drive</span>
+                                )}
+                                {browseData?.path && (
+                                    <span className="text-teal-400 font-mono text-sm truncate">
+                                        {browseData.path}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Folder List */}
+                        <div className="flex-1 overflow-y-auto p-2 min-h-[300px]">
+                            {browseLoading ? (
+                                <div className="flex items-center justify-center h-full">
+                                    <div className="loading-spinner" />
+                                </div>
+                            ) : browseData?.items.length === 0 ? (
+                                <div className="flex items-center justify-center h-full text-gray-500">
+                                    No subfolders found
+                                </div>
+                            ) : (
+                                <div className="space-y-1">
+                                    {browseData?.items.map((item) => (
+                                        <button
+                                            key={item.path}
+                                            onClick={() => navigateToFolder(item.path)}
+                                            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-(--bg-card) transition-colors text-left group"
+                                        >
+                                            {item.type === 'drive' ? (
+                                                <HardDrive className="w-5 h-5 text-teal-400" />
+                                            ) : (
+                                                <Folder className="w-5 h-5 text-yellow-400" />
+                                            )}
+                                            <span className="text-white flex-1 truncate">{item.name}</span>
+                                            <ChevronRight className="w-4 h-4 text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="p-4 border-t border-gray-700 flex items-center justify-between gap-4">
+                            <div className="flex-1 text-sm text-gray-400 truncate">
+                                {selectedPath ? `Selected: ${selectedPath}` : 'Navigate to a folder'}
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setShowBrowser(false)}
+                                    className="btn-secondary"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={() => handleAddPath(selectedPath)}
+                                    disabled={!selectedPath || saving}
+                                    className="btn-primary"
+                                >
+                                    <Check className="w-4 h-4" />
+                                    {saving ? 'Adding...' : 'Select This Folder'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -149,7 +316,7 @@ export default function SettingsPage() {
                     Library Paths
                 </h2>
 
-                <div className="bg-[var(--bg-secondary)] rounded-lg p-4">
+                <div className="bg-(--bg-secondary) rounded-lg p-4">
                     {/* Existing Paths */}
                     {scanPaths.length === 0 ? (
                         <p className="text-gray-400 mb-4">No library paths configured. Add a folder to scan for media.</p>
@@ -158,7 +325,7 @@ export default function SettingsPage() {
                             {scanPaths.map((path) => (
                                 <li
                                     key={path.id}
-                                    className={`flex items-center justify-between p-3 rounded ${path.exists ? 'bg-[var(--bg-card)]' : 'bg-red-900/20 border border-red-800'
+                                    className={`flex items-center justify-between p-3 rounded-lg transition-all ${path.exists ? 'bg-(--bg-card)' : 'bg-red-900/20 border border-red-800'
                                         }`}
                                 >
                                     <div className="flex-1 min-w-0">
@@ -176,7 +343,8 @@ export default function SettingsPage() {
                                     </div>
                                     <button
                                         onClick={() => handleDeletePath(path.id)}
-                                        className="ml-4 text-gray-400 hover:text-red-400 transition-colors"
+                                        className="ml-4 p-2 text-gray-400 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
+                                        title="Remove path"
                                     >
                                         <Trash2 className="w-5 h-5" />
                                     </button>
@@ -187,22 +355,39 @@ export default function SettingsPage() {
 
                     {/* Add New Path */}
                     <div className="flex gap-2">
-                        <input
-                            type="text"
-                            value={newPath}
-                            onChange={(e) => setNewPath(e.target.value)}
-                            placeholder="Enter folder path (e.g., D:\Movies)"
-                            className="flex-1 px-4 py-2 bg-[var(--bg-card)] border border-gray-700 rounded text-white placeholder-gray-500 focus:outline-none focus:border-gray-500"
-                        />
                         <button
-                            onClick={handleAddPath}
-                            disabled={saving || !newPath.trim()}
-                            className="btn-primary"
+                            onClick={openFolderBrowser}
+                            className="btn-primary flex-1"
                         >
-                            <Plus className="w-5 h-5" />
-                            Add
+                            <Folder className="w-5 h-5" />
+                            Browse for Folder
                         </button>
                     </div>
+
+                    {/* Manual Path Entry (collapsed) */}
+                    <details className="mt-3">
+                        <summary className="text-sm text-gray-500 cursor-pointer hover:text-gray-300 transition-colors">
+                            Or enter path manually
+                        </summary>
+                        <div className="flex gap-2 mt-2">
+                            <input
+                                type="text"
+                                value={newPath}
+                                onChange={(e) => setNewPath(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleAddPath()}
+                                placeholder="Enter folder path (e.g., D:\Movies)"
+                                className="flex-1 px-4 py-2 bg-(--bg-card) border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-teal-500 transition-colors"
+                            />
+                            <button
+                                onClick={() => handleAddPath()}
+                                disabled={saving || !newPath.trim()}
+                                className="btn-secondary"
+                            >
+                                <Plus className="w-5 h-5" />
+                                Add
+                            </button>
+                        </div>
+                    </details>
 
                     {/* Scan Button */}
                     <div className="mt-4 pt-4 border-t border-gray-700">
@@ -222,7 +407,7 @@ export default function SettingsPage() {
             <section className="mb-10">
                 <h2 className="text-xl font-semibold text-white mb-4">Playback</h2>
 
-                <div className="bg-[var(--bg-secondary)] rounded-lg p-4 space-y-4">
+                <div className="bg-(--bg-secondary) rounded-lg p-4 space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-white">Autoplay Next Episode</p>
@@ -235,7 +420,7 @@ export default function SettingsPage() {
                                 onChange={(e) => handleUpdateSetting('autoplay_next_episode', e.target.checked)}
                                 className="sr-only peer"
                             />
-                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[var(--accent)]"></div>
+                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-500"></div>
                         </label>
                     </div>
 
@@ -247,7 +432,7 @@ export default function SettingsPage() {
                         <select
                             value={String(settings.default_subtitle_language || 'eng')}
                             onChange={(e) => handleUpdateSetting('default_subtitle_language', e.target.value)}
-                            className="px-3 py-2 bg-[var(--bg-card)] border border-gray-700 rounded text-white"
+                            className="px-3 py-2 bg-(--bg-card) border border-gray-700 rounded-lg text-white focus:border-teal-500 focus:outline-none transition-colors"
                         >
                             <option value="eng">English</option>
                             <option value="spa">Spanish</option>
@@ -264,13 +449,13 @@ export default function SettingsPage() {
             <section className="mb-10">
                 <h2 className="text-xl font-semibold text-white mb-4">Data Management</h2>
 
-                <div className="bg-[var(--bg-secondary)] rounded-lg p-4 space-y-4">
+                <div className="bg-(--bg-secondary) rounded-lg p-4 space-y-4">
                     <div className="flex items-center justify-between">
                         <div>
                             <p className="text-white">Clear Watch History</p>
                             <p className="text-sm text-gray-500">Remove all playback progress and watch counts</p>
                         </div>
-                        <button onClick={handleClearHistory} className="btn-secondary text-red-400">
+                        <button onClick={handleClearHistory} className="btn-secondary text-red-400 hover:bg-red-400/10">
                             Clear
                         </button>
                     </div>
@@ -280,7 +465,7 @@ export default function SettingsPage() {
                             <p className="text-white">Re-fetch TMDB Metadata</p>
                             <p className="text-sm text-gray-500">Clear cached data and fetch fresh metadata</p>
                         </div>
-                        <button onClick={handleClearTmdbCache} className="btn-secondary text-yellow-400">
+                        <button onClick={handleClearTmdbCache} className="btn-secondary text-yellow-400 hover:bg-yellow-400/10">
                             Clear Cache
                         </button>
                     </div>
@@ -290,12 +475,12 @@ export default function SettingsPage() {
             {/* About */}
             <section>
                 <h2 className="text-xl font-semibold text-white mb-4">About</h2>
-                <div className="bg-[var(--bg-secondary)] rounded-lg p-4">
+                <div className="bg-(--bg-secondary) rounded-lg p-4">
                     <p className="text-gray-400">
-                        Local Media Player - Netflix-style local video streaming
+                        Nebula Player - Stream your local video library with style
                     </p>
                     <p className="text-sm text-gray-500 mt-2">
-                        Version 1.0.0 • Built with React, Express, and Video.js
+                        Version 1.0.0 • Built with React, Express, and FFmpeg
                     </p>
                 </div>
             </section>

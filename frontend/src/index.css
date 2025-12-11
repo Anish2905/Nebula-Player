@@ -9,6 +9,7 @@
   --text-secondary: #94a3b8;
   --accent: #14b8a6;
   --accent-hover: #0d9488;
+  --accent-glow: rgba(20, 184, 166, 0.4);
 }
 
 /* Base Styles */
@@ -21,7 +22,173 @@ body {
   min-height: 100vh;
 }
 
-/* Scrollbar Styling */
+/* ============================================
+   ANIMATION KEYFRAMES
+   ============================================ */
+
+/* Fade In */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Fade In Up */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Fade In Scale */
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Slide In From Right */
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Pulse Glow */
+@keyframes pulseGlow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 5px var(--accent-glow);
+  }
+
+  50% {
+    box-shadow: 0 0 20px var(--accent-glow), 0 0 30px var(--accent-glow);
+  }
+}
+
+/* Shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Float */
+@keyframes float {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Spin Slow */
+@keyframes spinSlow {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ============================================
+   ANIMATION UTILITY CLASSES
+   ============================================ */
+
+.animate-fadeIn {
+  animation: fadeIn 0.4s ease-out forwards;
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.animate-fadeInScale {
+  animation: fadeInScale 0.3s ease-out forwards;
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.4s ease-out forwards;
+}
+
+.animate-pulseGlow {
+  animation: pulseGlow 2s infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+/* Staggered animations for lists */
+.stagger-1 {
+  animation-delay: 0.05s;
+}
+
+.stagger-2 {
+  animation-delay: 0.1s;
+}
+
+.stagger-3 {
+  animation-delay: 0.15s;
+}
+
+.stagger-4 {
+  animation-delay: 0.2s;
+}
+
+.stagger-5 {
+  animation-delay: 0.25s;
+}
+
+.stagger-6 {
+  animation-delay: 0.3s;
+}
+
+.stagger-7 {
+  animation-delay: 0.35s;
+}
+
+.stagger-8 {
+  animation-delay: 0.4s;
+}
+
+/* ============================================
+   SCROLLBAR STYLING
+   ============================================ */
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -34,65 +201,173 @@ body {
 ::-webkit-scrollbar-thumb {
   background: #555;
   border-radius: 4px;
+  transition: background 0.3s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #666;
+  background: var(--accent);
 }
 
-/* Media Card Animations */
+/* ============================================
+   MEDIA CARD ANIMATIONS
+   ============================================ */
+
 .media-card {
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transition: all 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  position: relative;
+  transform-origin: center;
+  will-change: transform, box-shadow;
 }
 
 .media-card:hover {
-  transform: scale(1.05);
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-  z-index: 10;
+  transform: scale(1.08) translateY(-8px);
+  box-shadow:
+    0 20px 40px rgba(0, 0, 0, 0.6),
+    0 0 30px var(--accent-glow);
+  z-index: 20;
 }
 
-/* Video.js Overrides */
-.video-js {
-  width: 100%;
-  height: 100%;
+.media-card:hover img {
+  filter: brightness(1.1);
 }
 
-.video-js .vjs-big-play-button {
+.media-card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  border: 2px solid var(--accent);
+  pointer-events: none;
+}
+
+.media-card:hover::after {
+  opacity: 1;
+}
+
+/* ============================================
+   BUTTON ANIMATIONS
+   ============================================ */
+
+.btn-primary {
   background-color: var(--accent);
-  border: none;
+  color: white;
+  padding: 0.75rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 50%;
+  transform: translate(-50%, -50%);
+  transition: width 0.5s ease, height 0.5s ease;
 }
 
-.video-js .vjs-control-bar {
-  background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+.btn-primary:hover {
+  background-color: var(--accent-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px var(--accent-glow);
 }
 
-/* Progress Bar Overlay */
+.btn-primary:hover::before {
+  width: 300px;
+  height: 300px;
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background-color: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  color: white;
+  padding: 0.75rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.3s ease;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.btn-secondary:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+
+.btn-secondary:active {
+  transform: translateY(0);
+}
+
+/* ============================================
+   PROGRESS BAR ANIMATIONS
+   ============================================ */
+
 .progress-overlay {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   height: 4px;
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.2);
+  overflow: hidden;
 }
 
 .progress-bar {
   height: 100%;
-  background: var(--accent);
-  transition: width 0.3s ease;
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
+  transition: width 0.4s ease;
+  position: relative;
 }
 
-/* Gradient Overlays */
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(255, 255, 255, 0.4),
+      transparent);
+  animation: shimmer 2s infinite;
+}
+
+/* ============================================
+   GRADIENT OVERLAYS
+   ============================================ */
+
 .gradient-overlay {
   background: linear-gradient(to top,
-      rgba(20, 20, 20, 1) 0%,
-      rgba(20, 20, 20, 0.8) 30%,
-      rgba(20, 20, 20, 0.4) 60%,
+      var(--bg-primary) 0%,
+      rgba(10, 15, 20, 0.9) 20%,
+      rgba(10, 15, 20, 0.5) 50%,
       transparent 100%);
+  transition: opacity 0.5s ease;
 }
 
-/* Loading Skeleton */
+/* ============================================
+   LOADING SKELETON
+   ============================================ */
+
 @keyframes skeleton-loading {
   0% {
     background-position: 200% 0;
@@ -106,13 +381,17 @@ body {
 .skeleton {
   background: linear-gradient(90deg,
       var(--bg-card) 0%,
-      #3a3a3a 50%,
+      rgba(255, 255, 255, 0.1) 50%,
       var(--bg-card) 100%);
   background-size: 200% 100%;
-  animation: skeleton-loading 1.5s infinite;
+  animation: skeleton-loading 1.5s infinite ease-in-out;
+  border-radius: 8px;
 }
 
-/* Horizontal Scroll Row */
+/* ============================================
+   HORIZONTAL SCROLL ROW
+   ============================================ */
+
 .scroll-row {
   display: flex;
   gap: 1rem;
@@ -126,35 +405,205 @@ body {
   display: none;
 }
 
-/* Button Styles */
-.btn-primary {
+/* ============================================
+   PAGE TRANSITIONS
+   ============================================ */
+
+.page-enter {
+  animation: fadeInUp 0.4s ease-out forwards;
+}
+
+.page-content {
+  animation: fadeIn 0.5s ease-out forwards;
+}
+
+/* ============================================
+   HERO SECTION ANIMATIONS
+   ============================================ */
+
+.hero-content {
+  animation: fadeInUp 0.8s ease-out forwards;
+}
+
+.hero-title {
+  animation: fadeInUp 0.6s ease-out 0.2s forwards;
+  opacity: 0;
+}
+
+.hero-description {
+  animation: fadeInUp 0.6s ease-out 0.4s forwards;
+  opacity: 0;
+}
+
+.hero-buttons {
+  animation: fadeInUp 0.6s ease-out 0.6s forwards;
+  opacity: 0;
+}
+
+/* ============================================
+   INPUT ANIMATIONS
+   ============================================ */
+
+input,
+select,
+textarea {
+  transition: all 0.3s ease;
+  border: 1px solid transparent;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+  outline: none;
+}
+
+/* ============================================
+   CARD HOVER INFO REVEAL
+   ============================================ */
+
+.card-info {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.3s ease;
+}
+
+.media-card:hover .card-info {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ============================================
+   ICON ANIMATIONS
+   ============================================ */
+
+.icon-spin {
+  animation: spinSlow 2s linear infinite;
+}
+
+.icon-bounce {
+  transition: transform 0.3s ease;
+}
+
+.icon-bounce:hover {
+  animation: float 0.6s ease-in-out;
+}
+
+/* ============================================
+   TOOLTIP ANIMATIONS
+   ============================================ */
+
+.tooltip {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(5px);
+  transition: all 0.2s ease;
+}
+
+.tooltip-trigger:hover .tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+/* ============================================
+   MODAL ANIMATIONS
+   ============================================ */
+
+.modal-backdrop {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.modal-content {
+  animation: fadeInScale 0.3s ease-out forwards;
+}
+
+/* ============================================
+   GLOW EFFECTS
+   ============================================ */
+
+.glow-accent {
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.glow-text {
+  text-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* ============================================
+   LOADING SPINNER
+   ============================================ */
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--bg-card);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spinSlow 0.8s linear infinite;
+}
+
+/* ============================================
+   VIDEO.JS OVERRIDES
+   ============================================ */
+
+.video-js {
+  width: 100%;
+  height: 100%;
+}
+
+.video-js .vjs-big-play-button {
   background-color: var(--accent);
-  color: white;
-  padding: 0.75rem 2rem;
-  border-radius: 4px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: background-color 0.2s ease;
+  border: none;
+  border-radius: 50%;
+  transition: all 0.3s ease;
 }
 
-.btn-primary:hover {
+.video-js .vjs-big-play-button:hover {
   background-color: var(--accent-hover);
+  transform: scale(1.1);
 }
 
-.btn-secondary {
-  background-color: rgba(255, 255, 255, 0.2);
-  color: white;
-  padding: 0.75rem 2rem;
-  border-radius: 4px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  transition: background-color 0.2s ease;
+.video-js .vjs-control-bar {
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.9));
 }
 
-.btn-secondary:hover {
-  background-color: rgba(255, 255, 255, 0.3);
+/* ============================================
+   RESPONSIVE ANIMATIONS
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================
+   SUBTITLE STYLING
+   ============================================ */
+
+video::cue {
+  background-color: rgba(0, 0, 0, 0.6);
+  color: #ffffff;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-weight: 500;
+  font-size: 1.35rem;
+  /* Slightly larger */
+  line-height: 1.6;
+  /* Better line spacing */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  padding: 2px 8px;
+  /* Add internal padding to the box */
+}
+
+/* Lift subtitles higher to ensure they are well above the progress bar */
+video::-webkit-media-text-track-display {
+  margin-bottom: 120px;
+  /* Increased from 60px */
 }

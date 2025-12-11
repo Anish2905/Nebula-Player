@@ -5,9 +5,9 @@
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { spawn } from 'child_process';
-import { getOne, getAll } from '../db.js';
-import { srtToVtt } from '../services/subtitleConverter.js';
+import { getOne, getAll, run } from '../db.js';
+import { srtToVtt, extractEmbeddedSubtitle } from '../services/subtitleConverter.js';
+import { Media, SubtitleTrack } from '../types/db.js';
 
 const router = Router();
 
@@ -50,14 +50,8 @@ router.get('/:id', (req, res) => {
     try {
         const id = parseInt(req.params.id);
 
-        const media = getOne<{
-            file_path: string;
-            file_name: string;
-            video_codec: string;
-            audio_codec: string;
-            browser_compatible: number;
-        }>(
-            'SELECT file_path, file_name, video_codec, audio_codec, browser_compatible FROM media WHERE id = ?',
+        const media = getOne<Media>(
+            'SELECT * FROM media WHERE id = ?',
             [id]
         );
 
@@ -65,10 +59,18 @@ router.get('/:id', (req, res) => {
             return res.status(404).json({ error: 'Media not found' });
         }
 
-        const filePath = media.file_path;
+        // Check if we have a converted version
+        let filePath = media.file_path;
+        let isConverted = false;
 
-        // Validate path
-        if (!validateFilePath(filePath)) {
+        if (media.converted_path && fs.existsSync(media.converted_path)) {
+            filePath = media.converted_path;
+            isConverted = true;
+            console.log(`📦 Serving converted: ${media.file_name}`);
+        }
+
+        // Validate original path
+        if (!isConverted && !validateFilePath(media.file_path)) {
             return res.status(403).json({ error: 'Access denied' });
         }
 
@@ -77,60 +79,21 @@ router.get('/:id', (req, res) => {
             return res.status(404).json({ error: 'File not found' });
         }
 
-        // Check if transcoding is needed
-        const shouldTranscode = needsTranscoding(media.video_codec || '', media.audio_codec || '');
+        // Check if file needs conversion (and isn't converted yet)
+        const videoOk = ['h264', 'avc1', 'vp8', 'vp9'].some(c => media.video_codec?.toLowerCase().includes(c));
+        const audioOk = ['aac', 'mp3', 'opus', 'vorbis', 'flac'].some(c => media.audio_codec?.toLowerCase().includes(c));
+        const needsConversion = (!videoOk || !audioOk) && !isConverted;
 
-        if (shouldTranscode) {
-            // Transcode on-the-fly using FFmpeg
-            console.log(`🔄 Transcoding ${media.file_name} (${media.video_codec}/${media.audio_codec})`);
+        if (needsConversion) {
+            console.log(`⚠️ Needs conversion: ${media.file_name} (${media.video_codec}/${media.audio_codec})`);
 
-            res.setHeader('Content-Type', 'video/mp4');
-            res.setHeader('Cache-Control', 'no-cache');
-
-            const ffmpeg = spawn('ffmpeg', [
-                '-i', filePath,
-                '-vf', 'format=yuv420p',      // Convert any pixel format to yuv420p
-                '-c:v', 'libx264',
-                '-profile:v', 'main',         // Main profile for better quality
-                '-level', '4.0',
-                '-preset', 'veryfast',         // Balance speed and quality
-                '-crf', '23',                  // Better quality
-                '-c:a', 'aac',
-                '-ac', '2',
-                '-b:a', '192k',
-                '-movflags', 'frag_keyframe+empty_moov+faststart',
-                '-f', 'mp4',
-                '-'
-            ]);
-
-            ffmpeg.stdout.pipe(res);
-
-            ffmpeg.stderr.on('data', (data) => {
-                // Log FFmpeg progress (optional, can be noisy)
-                const msg = data.toString();
-                if (msg.includes('Error') || msg.includes('error')) {
-                    console.error('FFmpeg error:', msg);
-                }
+            return res.status(415).json({
+                error: 'conversion_required',
+                mediaId: id,
+                videoCodec: media.video_codec,
+                audioCodec: media.audio_codec,
+                message: 'This file is being converted. Please wait...'
             });
-
-            ffmpeg.on('error', (err) => {
-                console.error('FFmpeg spawn error:', err);
-                if (!res.headersSent) {
-                    res.status(500).json({ error: 'Transcoding failed to start' });
-                }
-            });
-
-            ffmpeg.on('close', (code) => {
-                if (code !== 0 && code !== null) {
-                    console.log(`FFmpeg exited with code ${code}`);
-                }
-            });
-
-            // Handle client disconnect
-            req.on('close', () => {
-                ffmpeg.kill('SIGTERM');
-            });
-
         } else {
             // Direct streaming (no transcoding needed)
             const stat = fs.statSync(filePath);
@@ -179,17 +142,12 @@ router.get('/:id', (req, res) => {
 });
 
 // GET /api/video/:id/subtitle/:trackId - Get subtitle track as WebVTT
-router.get('/:id/subtitle/:trackId', (req, res) => {
+router.get('/:id/subtitle/:trackId', async (req, res) => {
     try {
         const mediaId = parseInt(req.params.id);
         const trackId = parseInt(req.params.trackId);
 
-        const track = getOne<{
-            media_id: number;
-            is_embedded: number;
-            external_path: string;
-            converted_path: string;
-        }>(
+        const track = getOne<SubtitleTrack>(
             'SELECT * FROM subtitle_tracks WHERE id = ? AND media_id = ?',
             [trackId, mediaId]
         );
@@ -198,13 +156,40 @@ router.get('/:id/subtitle/:trackId', (req, res) => {
             return res.status(404).json({ error: 'Subtitle track not found' });
         }
 
-        if (track.is_embedded && !track.converted_path) {
-            return res.status(501).json({
-                error: 'Embedded subtitle extraction not implemented.'
-            });
-        }
+        let subtitlePath = track.converted_path || track.external_path;
 
-        const subtitlePath = track.converted_path || track.external_path;
+        if (track.is_embedded && !subtitlePath) {
+            // Generate output path for extracted subtitle
+            const media = getOne<Media>('SELECT file_path FROM media WHERE id = ?', [mediaId]);
+            if (!media || !fs.existsSync(media.file_path)) {
+                return res.status(404).json({ error: 'Source media file not found' });
+            }
+
+            if (track.track_index === null) {
+                return res.status(400).json({ error: 'Invalid subtitle track index' });
+            }
+
+            // Define cache path for this track
+            const cacheDir = path.join(process.cwd(), 'converted_cache');
+            if (!fs.existsSync(cacheDir)) {
+                fs.mkdirSync(cacheDir, { recursive: true });
+            }
+
+            const outputPath = path.join(cacheDir, `${mediaId}_${trackId}_${track.track_index}.vtt`);
+
+            try {
+                await extractEmbeddedSubtitle(media.file_path, track.track_index, outputPath);
+
+                // Update DB to cache this result
+                run('UPDATE subtitle_tracks SET converted_path = ? WHERE id = ?', [outputPath, trackId]);
+
+                subtitlePath = outputPath;
+                console.log(`✅ Extracted and cached subtitle: ${outputPath}`);
+            } catch (error) {
+                console.error('Failed to extract subtitle:', error);
+                return res.status(500).json({ error: 'Subtitle extraction failed' });
+            }
+        }
 
         if (!subtitlePath || !fs.existsSync(subtitlePath)) {
             return res.status(404).json({ error: 'Subtitle file not found' });
@@ -234,16 +219,8 @@ router.get('/:id/info', (req, res) => {
     try {
         const id = parseInt(req.params.id);
 
-        const media = getOne<{
-            file_path: string;
-            file_size: number;
-            video_codec: string;
-            audio_codec: string;
-            browser_compatible: number;
-            duration_seconds: number;
-        }>(
-            `SELECT file_path, file_size, video_codec, audio_codec, browser_compatible, duration_seconds 
-       FROM media WHERE id = ?`,
+        const media = getOne<Media>(
+            `SELECT * FROM media WHERE id = ?`,
             [id]
         );
 
@@ -253,15 +230,18 @@ router.get('/:id/info', (req, res) => {
 
         const willTranscode = needsTranscoding(media.video_codec || '', media.audio_codec || '');
 
+        const subtitleTracks = getAll<SubtitleTrack>('SELECT * FROM subtitle_tracks WHERE media_id = ?', [id]);
+
         res.json({
             exists: fs.existsSync(media.file_path),
-            size: media.file_size,
+            size: fs.existsSync(media.file_path) ? fs.statSync(media.file_path).size : 0,
             videoCodec: media.video_codec,
             audioCodec: media.audio_codec,
             browserCompatible: media.browser_compatible === 1,
             willTranscode,
             duration: media.duration_seconds,
             streamUrl: `/api/video/${id}`,
+            subtitleTracks
         });
     } catch (err) {
         console.error('Video info error:', err);

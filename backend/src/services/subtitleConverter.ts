@@ -4,6 +4,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import ffmpeg from 'fluent-ffmpeg';
 
 /**
  * Convert SRT subtitle format to WebVTT
@@ -68,35 +69,38 @@ export async function convertSrtFile(srtPath: string, outputPath?: string): Prom
 }
 
 /**
- * Find external subtitle files for a video
+ * Extract an embedded subtitle track to a VTT file
  */
-export function findExternalSubtitles(videoPath: string): string[] {
-    const dir = path.dirname(videoPath);
-    const baseName = path.basename(videoPath, path.extname(videoPath));
-
-    const subtitleExtensions = ['.srt', '.vtt', '.ass', '.ssa', '.sub'];
-    const subtitles: string[] = [];
-
-    try {
-        const files = fs.readdirSync(dir);
-
-        for (const file of files) {
-            const ext = path.extname(file).toLowerCase();
-
-            // Check if it's a subtitle file
-            if (!subtitleExtensions.includes(ext)) continue;
-
-            // Check if it matches the video name
-            const subBaseName = path.basename(file, ext);
-            if (subBaseName.startsWith(baseName)) {
-                subtitles.push(path.join(dir, file));
-            }
+export function extractEmbeddedSubtitle(
+    inputPath: string,
+    trackIndex: number,
+    outputPath: string
+): Promise<string> {
+    return new Promise((resolve, reject) => {
+        // Ensure directory exists
+        const dir = path.dirname(outputPath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
         }
-    } catch (err) {
-        console.error(`Error finding subtitles for ${videoPath}:`, err);
-    }
 
-    return subtitles;
+        console.log(`Extracting subtitle track ${trackIndex} from ${inputPath} to ${outputPath}`);
+
+        ffmpeg(inputPath)
+            .outputOptions([
+                `-map 0:${trackIndex}`, // Select specific stream
+                '-f webvtt'             // Output format
+            ])
+            .output(outputPath)
+            .on('end', () => {
+                console.log(`Subtitle extraction complete: ${outputPath}`);
+                resolve(outputPath);
+            })
+            .on('error', (err) => {
+                console.error(`Subtitle extraction failed: ${err.message}`);
+                reject(err);
+            })
+            .run();
+    });
 }
 
 /**

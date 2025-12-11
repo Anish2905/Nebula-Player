@@ -4,14 +4,18 @@ services:
   media-player:
     build: .
     ports:
-      - "3001:3001"
+      - "3005:3001"
     volumes:
       # Database persistence
       - ./database:/app/database
-      # Downloaded images
-      - ./public:/app/public
+      # Downloaded images (only mount images, not the whole public dir which has the frontend build)
+      - ./public/images:/app/public/images
+      # Converted media cache
+      - ./converted_cache:/app/converted_cache
       # Media library paths (add your own)
-      - ${MEDIA_PATH:-./media}:/media:ro
+      - ${MEDIA_PATH:-./media}:/media
+      # Host system access for library selection
+      - /:/host_system
     environment:
       - TMDB_API_KEY=${TMDB_API_KEY}
       - NODE_ENV=production

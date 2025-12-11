@@ -59,10 +59,13 @@ async function processFile(filePath: string): Promise<boolean> {
         );
 
         // If file exists and size hasn't changed, skip processing
+        // Optimization disabled to force subtitle re-scan
+        /*
         if (existing && existing.file_size === stats.size) {
             run('UPDATE media SET last_scanned = CURRENT_TIMESTAMP WHERE id = ?', [existing.id]);
             return false; // Not a new file
         }
+        */
 
         // Parse filename for metadata
         const parsed = parseFilename(fileName);
@@ -87,6 +90,81 @@ async function processFile(filePath: string): Promise<boolean> {
                 subtitleTracks: [],
                 audioTracks: [],
             };
+        }
+
+        // Scan for external subtitles
+        try {
+            const dir = path.dirname(filePath);
+            const ext = path.extname(filePath);
+            const basename = path.basename(filePath, ext);
+            // console.log(`DEBUG: Scanning dir ${dir} for basename ${basename}`);
+            const files = fs.readdirSync(dir);
+            // console.log(`DEBUG: Files in dir: ${files.join(', ')}`);
+
+            const subtitleFiles = files.filter(f => {
+                const fLower = f.toLowerCase();
+                const match = f.startsWith(basename) && (fLower.endsWith('.srt') || fLower.endsWith('.vtt'));
+                if (match) console.log(`DEBUG: Match found: ${f}`);
+                return match;
+            });
+
+            if (subtitleFiles.length > 0) {
+                console.log(`Found external subs for ${fileName}:`, subtitleFiles);
+            }
+
+            for (const subFile of subtitleFiles) {
+                // Skip if it's the video file itself (unlikely due to extension check but safety first)
+                if (subFile === fileName) continue;
+
+                const subExt = path.extname(subFile).toLowerCase();
+                const subPath = path.join(dir, subFile);
+
+                // Try to guess language from filename parts (e.g. Movie.en.srt -> en)
+                // Remove basename and extension
+                const parts = subFile.slice(basename.length, -subExt.length).split(/[._-]/).filter(p => p.length > 0);
+
+                // Simple language detection details
+                let langCode = 'und';
+                let langName = 'Unknown (External)';
+                let title = subFile;
+
+                const commonLangs: Record<string, string> = {
+                    'en': 'English', 'eng': 'English',
+                    'es': 'Spanish', 'spa': 'Spanish',
+                    'fr': 'French', 'fre': 'French',
+                    'de': 'German', 'ger': 'German',
+                    'it': 'Italian', 'ita': 'Italian',
+                    'pt': 'Portuguese', 'por': 'Portuguese',
+                    'ru': 'Russian', 'rus': 'Russian',
+                    'ja': 'Japanese', 'jpn': 'Japanese',
+                    'zh': 'Chinese', 'chi': 'Chinese',
+                    'hi': 'Hindi', 'hin': 'Hindi',
+                    'ko': 'Korean', 'kor': 'Korean',
+                };
+
+                for (const part of parts) {
+                    const lower = part.toLowerCase();
+                    if (commonLangs[lower]) {
+                        langCode = lower.length === 2 ? lower : lower.substring(0, 3); // approximations
+                        langName = commonLangs[lower] + ' (External)';
+                        break;
+                    }
+                }
+
+                metadata.subtitleTracks.push({
+                    index: 0, // Not relevant for external
+                    languageCode: langCode,
+                    languageName: langName,
+                    title: title,
+                    codec: subExt.slice(1),
+                    isDefault: false,
+                    isForced: false,
+                    isEmbedded: false,
+                    externalPath: subPath
+                });
+            }
+        } catch (err) {
+            console.warn(`  ⚠️ Error checking external subtitles for ${fileName}:`, err);
         }
 
         const browserCompatible = isBrowserCompatible(
@@ -120,7 +198,9 @@ async function processFile(filePath: string): Promise<boolean> {
           has_subtitles = ?,
           has_multiple_audio = ?,
           updated_at = CURRENT_TIMESTAMP,
-          last_scanned = CURRENT_TIMESTAMP
+          last_scanned = CURRENT_TIMESTAMP,
+          match_method = NULL,
+          tmdb_id = NULL
         WHERE id = ?
       `, [
                 fileName,
@@ -152,9 +232,9 @@ async function processFile(filePath: string): Promise<boolean> {
 
             for (const track of metadata.subtitleTracks) {
                 insert(`
-          INSERT INTO subtitle_tracks (media_id, track_index, language_code, language_name, title, codec, is_default, is_forced)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, [existing.id, track.index, track.languageCode, track.languageName, track.title, track.codec, track.isDefault ? 1 : 0, track.isForced ? 1 : 0]);
+          INSERT INTO subtitle_tracks (media_id, track_index, language_code, language_name, title, codec, is_default, is_forced, is_embedded, external_path)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [existing.id, track.index, track.languageCode, track.languageName, track.title, track.codec, track.isDefault ? 1 : 0, track.isForced ? 1 : 0, track.isEmbedded ? 1 : 0, track.externalPath || null]);
             }
 
             for (const track of metadata.audioTracks) {
@@ -202,9 +282,9 @@ async function processFile(filePath: string): Promise<boolean> {
             // Insert tracks
             for (const track of metadata.subtitleTracks) {
                 insert(`
-          INSERT INTO subtitle_tracks (media_id, track_index, language_code, language_name, title, codec, is_default, is_forced)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `, [mediaId, track.index, track.languageCode, track.languageName, track.title, track.codec, track.isDefault ? 1 : 0, track.isForced ? 1 : 0]);
+          INSERT INTO subtitle_tracks (media_id, track_index, language_code, language_name, title, codec, is_default, is_forced, is_embedded, external_path)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [mediaId, track.index, track.languageCode, track.languageName, track.title, track.codec, track.isDefault ? 1 : 0, track.isForced ? 1 : 0, track.isEmbedded ? 1 : 0, track.externalPath || null]);
             }
 
             for (const track of metadata.audioTracks) {
@@ -283,6 +363,17 @@ export async function scanDirectory(scanPath: string, recursive: boolean = true)
 
     console.log(`\n✅ Scan complete in ${(duration / 1000).toFixed(1)}s`);
     console.log(`   New: ${newFiles}, Updated: ${updatedFiles}, Errors: ${errors}`);
+
+    // Auto-queue incompatible files for conversion
+    try {
+        const { queueAllIncompatible } = await import('../services/conversionService.js');
+        const queued = queueAllIncompatible();
+        if (queued > 0) {
+            console.log(`📝 Auto-queued ${queued} files for conversion`);
+        }
+    } catch (e) {
+        console.error('Failed to auto-queue conversions:', e);
+    }
 
     return {
         totalFiles: files.length,

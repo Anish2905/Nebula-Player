@@ -1,19 +1,122 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { Play, ArrowLeft, Clock, Star, Calendar, Film, Check, Plus } from 'lucide-react';
-import { useMediaDetails } from '../hooks/useMedia';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Play, ArrowLeft, Clock, Star, Calendar, Film, Check, Plus, Trash } from 'lucide-react';
+import { useMediaDetails, useMedia } from '../hooks/useMedia';
 import { usePlayback } from '../hooks/usePlayback';
-import type { CastMember } from '../types';
+import { mediaApi } from '../api/client';
+import type { CastMember, Media } from '../types';
+
+
+export interface MediaWithProgress extends Media {
+    progress_seconds?: number;
+    state_total?: number;
+    completed?: number;
+}
+
+class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean, error: Error | null }> {
+    constructor(props: { children: React.ReactNode }) {
+        super(props);
+        this.state = { hasError: false, error: null };
+    }
+
+    static getDerivedStateFromError(error: Error) {
+        return { hasError: true, error };
+    }
+
+    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+        console.error("Episode List Error:", error, errorInfo);
+    }
+
+    render() {
+        if (this.state.hasError) {
+            return (
+                <div className="p-4 bg-red-900/50 text-red-200 rounded-lg border border-red-700">
+                    <h3 className="font-bold mb-2">Something went wrong rendering episodes.</h3>
+                    <pre className="text-xs overflow-auto">{this.state.error?.toString()}</pre>
+                </div>
+            );
+        }
+
+        return this.props.children;
+    }
+}
 
 export default function DetailPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const { media, loading, error, refetch } = useMediaDetails(parseInt(id!));
     const { setWatched, saving } = usePlayback(parseInt(id!));
+    const [deleting, setDeleting] = useState(false);
+
+    // Memoize params to ensure stability for useMedia hook
+    const siblingsParams = useMemo(() => ({
+        tmdb_id: media?.media_type === 'tv' && media.tmdb_id ? media.tmdb_id : undefined,
+        type: 'tv',
+        limit: 1000,
+        sort: 'season_number,episode_number',
+    }), [media?.media_type, media?.tmdb_id]);
+
+    // Fetch siblings if TV show
+    const { media: siblings, refetch: refetchSiblings } = useMedia(siblingsParams);
+
+    // Group siblings by season
+    const seasons = useMemo(() => {
+        if (!siblings || !Array.isArray(siblings)) return {};
+        return siblings.reduce((acc: Record<number, Media[]>, item: Media) => {
+            const season = item.season_number || 0;
+            if (!acc[season]) acc[season] = [];
+            acc[season].push(item);
+            return acc;
+        }, {});
+    }, [siblings]);
+
+    // Sort logic
+    const sortedSeasons = useMemo(() => {
+        return Object.keys(seasons).map(Number).sort((a, b) => a - b);
+    }, [seasons]);
+
+    const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
+
+    // Auto-select first season or current season
+    const targetSeason = useMemo(() => {
+        if (sortedSeasons.length === 0) return null;
+        if (media?.season_number && sortedSeasons.includes(media.season_number)) {
+            return media.season_number;
+        }
+        return sortedSeasons[0];
+    }, [sortedSeasons, media?.season_number]);
+
+    useEffect(() => {
+        if (selectedSeason === null && targetSeason !== null) {
+            setSelectedSeason(targetSeason);
+        }
+    }, [targetSeason, selectedSeason]);
+
+    const activeEpisodes = useMemo(() => {
+        if (selectedSeason === null) return [];
+        const seasonEps = seasons[selectedSeason];
+        if (!seasonEps) return [];
+
+        try {
+            return [...seasonEps].sort((a, b) => (a.episode_number || 0) - (b.episode_number || 0));
+        } catch (e) {
+            console.error('Error sorting episodes:', e);
+            return [];
+        }
+    }, [seasons, selectedSeason]);
+
+    // Silence unused
+    useEffect(() => {
+        void useMedia;
+        void ErrorBoundary;
+        void refetchSiblings;
+        void activeEpisodes;
+    }, []);
 
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center">
-                <div className="w-8 h-8 border-4 border-t-[var(--accent)] border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin" />
+                <div className="w-8 h-8 border-4 border-t-(--accent) border-r-transparent border-b-transparent border-l-transparent rounded-full animate-spin" />
             </div>
         );
     }
@@ -57,6 +160,32 @@ export default function DetailPage() {
         refetch();
     };
 
+    const handleDelete = async (targetId: number, isMovie: boolean) => {
+        if (!window.confirm('Are you sure you want to delete this file? This will remove it from disk permanently.')) {
+            return;
+        }
+
+        try {
+            setDeleting(true);
+            await mediaApi.delete(targetId);
+
+            if (isMovie) {
+                navigate('/');
+            } else {
+                refetchSiblings();
+                if (targetId === media.id) {
+                    navigate('/');
+                }
+            }
+        } catch (err) {
+            console.error('Delete failed', err);
+            alert('Failed to delete media');
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+
     return (
         <div className="min-h-screen">
             {/* Backdrop Header */}
@@ -68,13 +197,12 @@ export default function DetailPage() {
                         className="w-full h-full object-cover"
                     />
                 ) : (
-                    <div className="w-full h-full bg-gradient-to-br from-gray-800 to-gray-900" />
+                    <div className="w-full h-full bg-linear-to-br from-gray-800 to-gray-900" />
                 )}
                 <div className="gradient-overlay absolute inset-0" />
 
-                {/* Back Button */}
                 <button
-                    onClick={() => navigate(-1)}
+                    onClick={() => navigate('/')}
                     className="absolute top-6 left-6 flex items-center gap-2 text-white/80 hover:text-white transition-colors"
                 >
                     <ArrowLeft className="w-5 h-5" />
@@ -84,9 +212,9 @@ export default function DetailPage() {
 
             {/* Content */}
             <div className="relative -mt-32 px-8 pb-16">
-                <div className="flex flex-col md:flex-row gap-8">
+                <div className="flex flex-col md:flex-row gap-8 items-start">
                     {/* Poster */}
-                    <div className="flex-none w-48 md:w-64">
+                    <div className="flex-none w-48 md:w-64 animate-fadeInScale">
                         {media.poster_path ? (
                             <img
                                 src={media.poster_path}
@@ -94,7 +222,7 @@ export default function DetailPage() {
                                 className="w-full rounded-lg shadow-2xl"
                             />
                         ) : (
-                            <div className="w-full aspect-[2/3] rounded-lg bg-gray-800 flex items-center justify-center">
+                            <div className="w-full aspect-2/3 rounded-lg bg-gray-800 flex items-center justify-center">
                                 <Film className="w-16 h-16 text-gray-600" />
                             </div>
                         )}
@@ -103,7 +231,7 @@ export default function DetailPage() {
                         {progress > 1 && progress < 95 && (
                             <div className="mt-3 bg-gray-700 rounded-full h-1.5">
                                 <div
-                                    className="bg-[var(--accent)] h-1.5 rounded-full"
+                                    className="bg-(--accent) h-1.5 rounded-full"
                                     style={{ width: `${progress}%` }}
                                 />
                             </div>
@@ -111,13 +239,13 @@ export default function DetailPage() {
                     </div>
 
                     {/* Info */}
-                    <div className="flex-1">
+                    <div className="flex-1 animate-fadeInUp" style={{ animationDelay: '0.1s' }}>
                         <h1 className="text-3xl md:text-4xl font-bold text-white mb-2">
                             {media.title}
                         </h1>
 
                         {media.media_type === 'tv' && media.season_number && media.episode_number && (
-                            <p className="text-lg text-[var(--accent)] mb-2">
+                            <p className="text-lg text-(--accent) mb-2">
                                 Season {media.season_number}, Episode {media.episode_number}
                                 {media.episode_title && ` - ${media.episode_title}`}
                             </p>
@@ -157,7 +285,7 @@ export default function DetailPage() {
                         {/* Genres */}
                         {genres.length > 0 && (
                             <div className="flex flex-wrap gap-2 mb-4">
-                                {genres.map(genre => (
+                                {genres.map((genre: string) => (
                                     <span
                                         key={genre}
                                         className="px-3 py-1 bg-gray-800 rounded-full text-sm text-gray-300"
@@ -201,6 +329,17 @@ export default function DetailPage() {
                                     </>
                                 )}
                             </button>
+
+                            {media.media_type === 'movie' && (
+                                <button
+                                    onClick={() => handleDelete(media.id, true)}
+                                    disabled={deleting}
+                                    className="px-4 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-200 rounded-lg flex items-center gap-2 transition-colors cursor-pointer"
+                                >
+                                    <Trash className="w-5 h-5" />
+                                    Delete
+                                </button>
+                            )}
                         </div>
 
                         {/* Director */}
@@ -215,7 +354,7 @@ export default function DetailPage() {
                             <div className="mb-8">
                                 <h3 className="text-lg font-semibold text-white mb-3">Cast</h3>
                                 <div className="flex gap-4 overflow-x-auto pb-2">
-                                    {cast.slice(0, 8).map((member, i) => (
+                                    {cast.slice(0, 8).map((member: CastMember, i: number) => (
                                         <div key={i} className="flex-none w-24 text-center">
                                             {member.profile_path ? (
                                                 <img
@@ -238,8 +377,102 @@ export default function DetailPage() {
                             </div>
                         )}
 
+                        {/* Episodes List */}
+                        {media.media_type === 'tv' && siblings.length > 0 && (
+                            <div className="mb-8">
+                                <h3 className="text-lg font-semibold text-white mb-4">Episodes</h3>
+
+                                {/* Season Selector */}
+                                <div className="flex gap-3 overflow-x-auto pb-4 mb-2 no-scrollbar">
+                                    {sortedSeasons.map((seasonNum: number) => (
+                                        <button
+                                            key={seasonNum}
+                                            onClick={() => {
+                                                setSelectedSeason(seasonNum);
+                                            }}
+                                            className={`px-5 py-2.5 rounded-lg font-medium whitespace-nowrap transition-colors ${selectedSeason === seasonNum
+                                                ? 'bg-white text-black'
+                                                : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                                                }`}
+                                        >
+                                            {seasonNum === 0 ? 'Specials' : `Season ${seasonNum}`}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                {/* Episode Cards */}
+                                <ErrorBoundary>
+                                    <div className="space-y-3">
+                                        {activeEpisodes.map((ep: Media) => (
+                                            <Link
+                                                key={ep.id}
+                                                to={`/media/${ep.id}`}
+                                                className={`block rounded-lg overflow-hidden transition-all hover:scale-[1.01] ${ep.id === media.id
+                                                    ? 'ring-2 ring-white/50 bg-white/10'
+                                                    : 'bg-gray-800/50 hover:bg-gray-700/50'
+                                                    }`}
+                                            >
+                                                <div className="flex gap-4 p-3">
+                                                    {/* Episode Thumbnail */}
+                                                    <div className="shrink-0 w-40 aspect-video rounded overflow-hidden bg-gray-700">
+                                                        {ep.backdrop_path ? (
+                                                            <img
+                                                                src={ep.backdrop_path}
+                                                                alt={ep.episode_title || `Episode ${ep.episode_number}`}
+                                                                className="w-full h-full object-cover"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-full flex items-center justify-center text-gray-500">
+                                                                <Film className="w-8 h-8" />
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Episode Info */}
+                                                    <div className="flex-1 min-w-0 py-1">
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <div className="min-w-0">
+                                                                <p className="font-medium text-white">
+                                                                    <span className="text-gray-400 mr-2">{ep.episode_number}.</span>
+                                                                    {ep.episode_title || ep.title}
+                                                                </p>
+                                                                {ep.duration_seconds && (
+                                                                    <p className="text-sm text-gray-400 mt-1">
+                                                                        {formatDuration(ep.duration_seconds)}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                            {/* Watched indicator - handles both list API (ep.completed) and details API (ep.playback_state?.completed) */}
+                                                            {((ep as any).completed === 1 || ep.playback_state?.completed === 1) && (
+                                                                <Check className="w-5 h-5 text-green-400 shrink-0" />
+                                                            )}
+                                                        </div>
+                                                        {/* Progress bar for partially watched episodes */}
+                                                        {(ep as any).progress_seconds && (ep as any).state_total && (ep as any).completed !== 1 && (
+                                                            <div className="w-full bg-gray-700 rounded-full h-1 mt-2">
+                                                                <div
+                                                                    className="bg-(--accent) h-1 rounded-full"
+                                                                    style={{ width: `${Math.min(100, ((ep as any).progress_seconds / (ep as any).state_total) * 100)}%` }}
+                                                                />
+                                                            </div>
+                                                        )}
+                                                        {/* Episode overview/summary */}
+                                                        {ep.overview && (
+                                                            <p className="text-sm text-gray-400 mt-2 line-clamp-2">
+                                                                {ep.overview}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </ErrorBoundary>
+                            </div>
+                        )}
+
                         {/* Technical Info */}
-                        <div className="bg-[var(--bg-secondary)] rounded-lg p-4">
+                        <div className="bg-(--bg-secondary) rounded-lg p-4">
                             <h3 className="text-lg font-semibold text-white mb-3">Technical Info</h3>
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                                 <div>

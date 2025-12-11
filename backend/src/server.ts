@@ -12,6 +12,7 @@ import videoRoutes from './routes/video.js';
 import playbackRoutes from './routes/playback.js';
 import searchRoutes from './routes/search.js';
 import settingsRoutes from './routes/settings.js';
+import conversionRoutes from './routes/conversion.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,6 +25,12 @@ app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     credentials: true
 }));
+
+
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+});
 
 app.use(express.json());
 
@@ -45,6 +52,7 @@ app.use('/api/video', videoRoutes);
 app.use('/api/playback', playbackRoutes);
 app.use('/api/search', searchRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/conversion', conversionRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -64,15 +72,19 @@ if (process.env.NODE_ENV === 'production') {
 
     // SPA fallback - serve index.html for all non-API routes
     app.get('*', (req, res) => {
+        res.set('Cache-Control', 'no-store');
         res.sendFile(path.join(publicPath, 'index.html'));
     });
 }
+
+import { runMigrations } from './migrate.js';
 
 // Initialize database and start server
 async function start() {
     try {
         console.log('🔄 Initializing database...');
         await initDatabase();
+        await runMigrations();
         console.log('✅ Database initialized');
 
         app.listen(PORT, () => {

@@ -47,8 +47,7 @@ export default function SearchBar({
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder={placeholder}
                     autoFocus={autoFocus}
-                    className="w-full pl-10 pr-10 py-2.5 bg-[var(--bg-secondary)] border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-gray-500 transition-colors"
-                />
+                    className="w-full pl-10 pr-10 py-2.5 bg-(--bg-secondary) border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-gray-500 transition-colors" />
                 {query && (
                     <button
                         type="button"

@@ -30,7 +30,7 @@ export default function SearchPage() {
                 />
                 <button
                     onClick={() => setShowFilters(!showFilters)}
-                    className={`btn-secondary md:hidden ${showFilters ? 'bg-[var(--accent)]' : ''}`}
+                    className={`btn-secondary md:hidden ${showFilters ? 'bg-(--accent)' : ''}`}
                 >
                     <Filter className="w-5 h-5" />
                 </button>
@@ -62,7 +62,7 @@ export default function SearchPage() {
                 {/* Mobile Filters */}
                 {showFilters && (
                     <div className="fixed inset-0 z-50 bg-black/80 md:hidden">
-                        <div className="absolute right-0 top-0 bottom-0 w-80 bg-[var(--bg-primary)] p-4 overflow-y-auto">
+                        <div className="absolute right-0 top-0 bottom-0 w-80 bg-(--bg-primary) p-4 overflow-y-auto">
                             <FilterSidebar
                                 filters={filters}
                                 onFilterChange={(f) => updateFilters({ ...f, page: 1 })}

@@ -20,7 +20,8 @@ const NOISE_WORDS = [
     'hdrip', 'x264', 'x265', 'h264', 'h265', 'hevc', 'aac', 'ac3', 'dts',
     '10bit', '8bit', 'remux', 'proper', 'repack', 'internal', 'extended',
     'unrated', 'directors', 'cut', 'edition', 'remastered', 'dubbed', 'subbed',
-    'multi', 'dual', 'audio', 'eng', 'english', 'hindi', 'japanese'
+    'multi', 'dual', 'audio', 'eng', 'english', 'hindi', 'japanese',
+    '720p', '1080p', '2160p', '4k', '480p', 'sd', 'uhd'
 ];
 
 // Resolution patterns
@@ -56,8 +57,11 @@ const MOVIE_PATTERNS = [
  * Clean up a title by replacing dots/underscores with spaces and removing noise
  */
 function cleanTitle(title: string): string {
+    // Remove content in square brackets (usually release groups/info)
+    let cleaned = title.replace(/\[.*?\]/g, ' ');
+
     // Replace dots and underscores with spaces
-    let cleaned = title.replace(/[._]/g, ' ');
+    cleaned = cleaned.replace(/[._]/g, ' ');
 
     // Remove noise words
     const words = cleaned.split(/\s+/);

@@ -5,9 +5,123 @@
 import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 import { getAll, getOne, run, insert } from '../db.js';
 
 const router = Router();
+
+// GET /api/settings/browse-folders - Browse filesystem folders
+router.get('/browse-folders', (req, res) => {
+    try {
+        const requestedPath = req.query.path as string;
+
+        // Default to home directory or drives on Windows
+        let targetPath: string;
+
+        if (!requestedPath) {
+            // Return drives on Windows, root on Unix
+            if (process.platform === 'win32') {
+                // Get Windows drives
+                const drives = [];
+                for (let i = 65; i <= 90; i++) {
+                    const drive = String.fromCharCode(i) + ':\\';
+                    if (fs.existsSync(drive)) {
+                        drives.push({
+                            name: drive,
+                            path: drive,
+                            type: 'drive'
+                        });
+                    }
+                }
+                return res.json({
+                    path: '',
+                    parent: null,
+                    items: drives
+                });
+            } else {
+                // In Docker/Linux, start at root
+                targetPath = '/';
+            }
+        } else {
+            targetPath = path.resolve(requestedPath);
+        }
+
+        if (!fs.existsSync(targetPath)) {
+            return res.status(400).json({ error: 'Path does not exist' });
+        }
+
+        if (!fs.statSync(targetPath).isDirectory()) {
+            return res.status(400).json({ error: 'Path is not a directory' });
+        }
+
+        const entries = fs.readdirSync(targetPath, { withFileTypes: true });
+
+        let virtualItems: { name: string; path: string; type: string }[] = [];
+
+        // Detect WSL/Docker Desktop host drives
+        if (targetPath === '/') {
+            const wslHostPath = '/host_system/mnt/host';
+            try {
+                if (fs.existsSync(wslHostPath)) {
+                    const hostDrives = fs.readdirSync(wslHostPath);
+                    const driveItems = hostDrives
+                        .filter(d => d.length === 1) // e.g. 'c', 'd'
+                        .map(drive => ({
+                            name: `Drive ${drive.toUpperCase()}`,
+                            path: path.join(wslHostPath, drive),
+                            type: 'drive'
+                        }));
+                    virtualItems = driveItems;
+                }
+            } catch (e) {
+                // Ignore errors reading host mounts
+            }
+        }
+
+        const folders = entries
+            .filter(entry => {
+                if (!entry.isDirectory() || entry.name.startsWith('.')) return false;
+
+                // If at root, filter out common system directories to reduce clutter
+                if (targetPath === '/') {
+                    const systemDirs = ['proc', 'sys', 'dev', 'run', 'var', 'tmp', 'boot', 'etc', 'usr', 'lib', 'lib64', 'sml', 'srv', 'opt', 'bin', 'sbin'];
+                    if (systemDirs.includes(entry.name)) return false;
+                }
+
+                return true;
+            })
+            .map(entry => ({
+                name: entry.name,
+                path: path.join(targetPath, entry.name),
+                type: 'folder'
+            }));
+
+        const allItems = [...virtualItems, ...folders]
+            .sort((a, b) => {
+                // Prioritize 'host_system' and 'media'
+                const priority = ['host_system', 'media'];
+                const aIdx = priority.indexOf(a.name);
+                const bIdx = priority.indexOf(b.name);
+
+                if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx;
+                if (aIdx !== -1) return -1;
+                if (bIdx !== -1) return 1;
+
+                return a.name.localeCompare(b.name);
+            });
+
+        const parentPath = path.dirname(targetPath);
+
+        res.json({
+            path: targetPath,
+            parent: parentPath !== targetPath ? parentPath : null,
+            items: allItems
+        });
+    } catch (err) {
+        console.error('Error browsing folders:', err);
+        res.status(500).json({ error: 'Failed to browse folders' });
+    }
+});
 
 // GET /api/settings - Get all settings
 router.get('/', (req, res) => {

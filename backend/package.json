@@ -12,14 +12,15 @@
         "scan": "tsx src/cli/scan.ts"
     },
     "dependencies": {
+        "@types/better-sqlite3": "^7.6.13",
         "axios": "^1.6.2",
+        "better-sqlite3": "^12.5.0",
         "chokidar": "^3.5.3",
         "cors": "^2.8.5",
         "dotenv": "^16.3.1",
         "express": "^4.18.2",
         "express-rate-limit": "^7.1.5",
-        "fluent-ffmpeg": "^2.1.2",
-        "sql.js": "^1.10.3"
+        "fluent-ffmpeg": "^2.1.2"
     },
     "devDependencies": {
         "@types/cors": "^2.8.16",

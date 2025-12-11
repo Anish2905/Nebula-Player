@@ -9,6 +9,8 @@ export function useMedia(params?: {
     search?: string;
     sort?: string;
     order?: string;
+    tmdb_id?: number;
+    group_by_series?: boolean;
 }) {
     const [media, setMedia] = useState<Media[]>([]);
     const [loading, setLoading] = useState(true);
@@ -33,7 +35,10 @@ export function useMedia(params?: {
         } finally {
             setLoading(false);
         }
-    }, [params?.page, params?.limit, params?.type, params?.search, params?.sort, params?.order]);
+    }, [
+        params?.page, params?.limit, params?.type, params?.search,
+        params?.sort, params?.order, params?.tmdb_id, params?.group_by_series
+    ]);
 
     useEffect(() => {
         fetchMedia();

@@ -8,6 +8,7 @@ RUN npm run build
 FROM node:18-alpine AS backend-builder
 WORKDIR /app/backend
 COPY backend/package*.json ./
+RUN apk add --no-cache python3 make g++
 RUN npm ci
 COPY backend/ ./
 RUN npm run build

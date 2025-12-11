@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+
+# Database
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Environment variables (IMPORTANT: contains API keys)
+.env
+.env.local
+.env.*.local
+
+# Cache directories
+converted_cache/
+transcoded_cache/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test results
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Temporary files
+*.tmp
+*.temp

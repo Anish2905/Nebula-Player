@@ -1,157 +1,228 @@
-# 🎬 Local Media Player
+# Nebula Player 🌌
 
-A Netflix-style local media player with automatic TMDB metadata enrichment. Stream your personal video collection through a beautiful, responsive web interface.
+A beautiful local video streaming player with a Netflix-style interface. Stream your local video library in the browser with automatic metadata fetching from TMDB.
 
-![Local Media Player](https://image.tmdb.org/t/p/w1280/placeholder.jpg)
+![Nebula Player](https://img.shields.io/badge/Nebula-Player-14b8a6?style=for-the-badge)
+![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
+![Vite](https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+
+---
 
 ## ✨ Features
 
-- **Netflix-style UI** - Beautiful dark theme with poster grids and hover effects
-- **TMDB Integration** - Automatic metadata, posters, and backdrop images
-- **Resume Playback** - Pick up where you left off across sessions
-- **Continue Watching** - Quick access to in-progress media
-- **Search & Filter** - Find content by title, genre, year, or resolution
-- **Video.js Player** - Smooth playback with keyboard shortcuts
-- **Responsive Design** - Works on desktop, tablet, and mobile
+- 🎬 **Netflix-style UI** - Beautiful teal-themed dark interface
+- 📂 **Library Management** - Add multiple folders to your library
+- 🔍 **TMDB Integration** - Automatic movie/TV show metadata and posters
+- ▶️ **Video Playback** - Native HTML5 video player with keyboard shortcuts
+- 🔄 **FFmpeg Transcoding** - Plays incompatible formats (HEVC, etc.) via real-time transcoding
+- 📊 **Continue Watching** - Resume videos where you left off
+- 🎯 **Smart Filtering** - Only shows videos from configured library paths
+- 🧪 **E2E Testing** - Comprehensive Playwright test suite
+
+---
+
+## 📸 Screenshots
+
+### Welcome & Onboarding
+Add your media folders to get started with Nebula Player.
+
+![Welcome Page](docs/screenshots/welcome.png)
+
+### Home - Media Library
+Browse your entire video collection with beautiful poster artwork.
+
+![Home Page](docs/screenshots/home.png)
+
+### Settings & Library Management
+Manage your media folders, scan for new content, and configure preferences.
+
+![Settings Page](docs/screenshots/settings.png)
+
+---
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 
-- **Node.js 18+**
-- **FFmpeg** (for metadata extraction)
-- **TMDB API Key** - [Get one free](https://www.themoviedb.org/settings/api)
+- [Node.js](https://nodejs.org/) 18+
+- [FFmpeg](https://ffmpeg.org/) (optional, for transcoding)
+- [TMDB API Key](https://www.themoviedb.org/settings/api) (optional, for metadata)
 
-### Development Setup
+### Installation
 
 ```bash
-# 1. Clone the repository
-git clone <repo>
-cd media-player
+# Clone the repository
+git clone <repo-url>
+cd nebula-player
 
-# 2. Backend setup
+# Backend setup
 cd backend
 npm install
-cp .env.example .env
-# Edit .env: Add your TMDB_API_KEY
-npm run migrate
+cp .env.example .env  # Edit with your TMDB API key
 npm run dev
 
-# 3. Frontend setup (new terminal)
+# Frontend setup (new terminal)
 cd frontend
 npm install
 npm run dev
-
-# 4. Open browser
-open http://localhost:5173
 ```
 
-### First-Time Setup
+### Access
 
-1. Open the app at `http://localhost:5173`
-2. Click **Settings** in the top right
-3. Add your media folder path (e.g., `D:\Movies`)
-4. Click **Scan Library Now**
-5. Wait for TMDB metadata enrichment
-6. Enjoy your collection! 🎉
+Open **http://localhost:5173** in your browser.
 
-## 🐳 Docker Deployment
+---
 
-```bash
-# 1. Configure environment
-cp .env.example .env
-# Edit .env with your TMDB_API_KEY
+## 📖 User Onboarding Guide
 
-# 2. Set media path
-export MEDIA_PATH=/path/to/your/videos
+### Step 1: Add Your Media Folders
 
-# 3. Start container
-docker-compose up -d
+When you first open Nebula Player, you'll see the **Welcome Page**:
 
-# 4. Access the app
-open http://localhost:3001
-```
+1. Click **"Browse Folders"** to navigate your filesystem
+2. Select folders containing your movies or TV shows
+3. Toggle **"Recursive Scanning"** to include subfolders
+4. Click **"Add Path"** to add the folder
+
+### Step 2: Scan Your Library
+
+Once folders are added:
+
+1. Navigate to **Settings** (gear icon in sidebar)
+2. Click **"Scan Library Now"** to discover all video files
+3. Wait for the scan to complete
+
+### Step 3: Enjoy Your Content
+
+- **Home Page**: Browse all your media with poster artwork
+- **Search**: Find specific titles or filter by genre/year
+- **Playback**: Click any title to watch with full player controls
+- **Continue Watching**: Resume where you left off
+
+---
 
 ## ⌨️ Keyboard Shortcuts
 
 | Key | Action |
 |-----|--------|
 | `Space` / `K` | Play/Pause |
-| `←` / `→` | Seek ±10 seconds |
-| `↑` / `↓` | Volume ±10% |
-| `F` | Toggle fullscreen |
-| `M` | Toggle mute |
-| `Esc` | Exit player |
+| `←` / `→` | Seek -10s / +10s |
+| `↑` / `↓` | Volume up/down |
+| `F` | Fullscreen |
+| `M` | Mute |
+| `Esc` | Close player |
+
+---
+
+## 🧪 Testing
+
+Nebula Player includes a comprehensive E2E test suite using Playwright:
+
+```bash
+cd frontend
+
+# Run all E2E tests
+npm run test:e2e
+
+# Run with interactive UI
+npm run test:e2e:ui
+
+# Run with visible browser
+npm run test:e2e:headed
+```
+
+**Test Coverage:**
+- Welcome/Onboarding flow (5 tests)
+- Home page & navigation (5 tests)
+- Search & filtering (5 tests)
+- Media detail page (5 tests)
+- Settings management (6 tests)
+
+---
 
 ## 📁 Project Structure
 
 ```
-media-player/
-├── backend/
+nebula-player/
+├── backend/           # Express.js API server
 │   ├── src/
-│   │   ├── server.ts          # Express app
-│   │   ├── db.ts              # SQLite wrapper
-│   │   ├── scanner/           # File discovery
-│   │   ├── services/          # TMDB, subtitles
-│   │   └── routes/            # API endpoints
-│   └── migrations/            # Database schema
-├── frontend/
+│   │   ├── routes/    # API routes (media, video, playback, settings)
+│   │   ├── scanner/   # File scanner & metadata extractor
+│   │   ├── services/  # TMDB integration, transcoding
+│   │   └── db.ts      # SQLite database
+│   └── package.json
+├── frontend/          # React + Vite frontend
 │   ├── src/
-│   │   ├── components/        # React components
-│   │   ├── pages/             # Route pages
-│   │   ├── hooks/             # Custom hooks
-│   │   └── api/               # API client
-├── docker-compose.yml
-└── Dockerfile
+│   │   ├── pages/     # Home, Detail, Player, Settings, Search
+│   │   ├── components/# MediaGrid, VideoPlayer, etc.
+│   │   ├── hooks/     # Custom React hooks
+│   │   └── api/       # API client
+│   ├── e2e/           # Playwright E2E tests
+│   └── package.json
+├── docs/
+│   └── screenshots/   # App screenshots
+└── README.md
 ```
 
-## 🔧 Configuration
+---
 
-### Environment Variables
+## ⚙️ Configuration
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `TMDB_API_KEY` | TMDB API key (required) | - |
-| `PORT` | Server port | 3001 |
-| `DB_PATH` | SQLite database path | ./database.sqlite |
-| `DEFAULT_SCAN_PATHS` | Comma-separated media paths | - |
+### Environment Variables (`backend/.env`)
 
-### Supported Formats
+```env
+# TMDB API (optional - for movie/TV metadata)
+TMDB_API_KEY=your_api_key_here
+TMDB_ACCESS_TOKEN=your_access_token_here
 
-**Browser-compatible (Direct Play):**
-- Video: H.264, VP8, VP9, AV1
-- Audio: AAC, MP3, Opus, Vorbis
-- Container: MP4, WebM
+# Server
+PORT=3001
+FRONTEND_URL=http://localhost:5173
 
-**Other formats** will show a warning but may still work depending on browser.
-
-## ⚠️ Known Limitations
-
-1. **No transcoding** - Only browser-compatible formats play directly
-2. **Single user** - No authentication or user profiles
-3. **Local only** - No remote/external streaming
-4. **English metadata** - TMDB defaults to en-US locale
-
-## 🛠️ Development
-
-```bash
-# Backend development (with hot reload)
-cd backend && npm run dev
-
-# Frontend development (with HMR)
-cd frontend && npm run dev
-
-# Run database migrations
-cd backend && npm run migrate
+# Database
+DB_PATH=./database.sqlite
 ```
+
+---
+
+## 🎥 Supported Video Formats
+
+**Direct Playback (no transcoding):**
+- MP4 (H.264/AAC)
+- WebM (VP8/VP9)
+
+**Transcoded Playback (requires FFmpeg):**
+- MKV, AVI, MOV
+- HEVC/H.265
+- DTS/AC3 audio
+
+---
+
+## 🛠️ Tech Stack
+
+**Backend:**
+- Express.js
+- better-sqlite3
+- FFmpeg (transcoding)
+- TMDB API
+
+**Frontend:**
+- React 19
+- Vite 7
+- Tailwind CSS 4
+- React Router 7
+- TanStack Query
+
+**Testing:**
+- Playwright
+
+---
 
 ## 📄 License
 
-MIT License - feel free to use and modify for personal use.
+MIT
 
-## 🙏 Credits
+---
 
-- [TMDB](https://www.themoviedb.org/) for metadata API
-- [Video.js](https://videojs.com/) for the video player
-- [Lucide](https://lucide.dev/) for icons
-- [Tailwind CSS](https://tailwindcss.com/) for styling
+Built with ❤️ using React, Express, and FFmpeg

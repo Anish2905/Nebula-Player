@@ -27,7 +27,7 @@ export default function ContinueWatching({ media, loading = false }: ContinueWat
                     {Array.from({ length: 6 }).map((_, i) => (
                         <div
                             key={i}
-                            className="flex-none w-[180px] aspect-[2/3] rounded-md skeleton"
+                            className="flex-none w-[180px] aspect-2/3 rounded-md skeleton"
                         />
                     ))}
                 </div>
