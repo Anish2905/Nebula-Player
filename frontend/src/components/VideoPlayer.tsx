@@ -540,6 +540,25 @@ export default function VideoPlayer({ media, nextEpisode, onClose, autoPlay = tr
     const actualDuration = duration || media.duration_seconds || 0;
     const progress = actualDuration > 0 ? (displayTime / actualDuration) * 100 : 0;
 
+    // Unified click handler for Video element
+    const handleVideoClick = (e: React.MouseEvent | React.PointerEvent) => {
+        // If it's a touch event (or we can infer it), use toggle controls logic
+        // We can check explicit pointerType if using PointerEvent, or assume consistent behavior
+        const isTouch = (e as React.PointerEvent).pointerType === 'touch';
+
+        if (isTouch) {
+            // On mobile/touch: Toggle controls
+            if (showControls) {
+                setShowControls(false);
+            } else {
+                showControlsTemporarily();
+            }
+        } else {
+            // On desktop/mouse: Toggle play
+            togglePlay();
+        }
+    };
+
     return (
         <div
             ref={containerRef}
@@ -556,7 +575,7 @@ export default function VideoPlayer({ media, nextEpisode, onClose, autoPlay = tr
                 playsInline
                 className="w-full h-full object-contain cursor-pointer"
                 style={{ maxHeight: '100vh' }}
-                onClick={togglePlay}
+                onClick={handleVideoClick} // Use new handler
             >
                 {subtitleTracks.map(track => (
                     <track
@@ -607,8 +626,14 @@ export default function VideoPlayer({ media, nextEpisode, onClose, autoPlay = tr
 
             {/* Center Play Indicator (when paused) */}
             {!isPlaying && !isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div className="w-24 h-24 rounded-full bg-black/60 flex items-center justify-center backdrop-blur-sm">
+                <div
+                    className="absolute inset-0 flex items-center justify-center cursor-pointer z-10"
+                    onClick={(e) => {
+                        e.stopPropagation(); // Prevent video click
+                        togglePlay();
+                    }}
+                >
+                    <div className="w-24 h-24 rounded-full bg-black/60 flex items-center justify-center backdrop-blur-sm hover:bg-black/70 transition-colors">
                         <Play className="w-12 h-12 text-white ml-1" fill="white" />
                     </div>
                 </div>
