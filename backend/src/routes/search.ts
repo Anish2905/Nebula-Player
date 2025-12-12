@@ -90,9 +90,16 @@ router.get('/', (req, res) => {
         const sortColumn = validSorts.includes(sort as string) ? sort : 'rating';
         const sortOrder = (order as string).toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
+        // Group items by Series (tmdb_id) for TV shows to consolidate episodes/seasons
+        const groupClause = "GROUP BY CASE WHEN media_type = 'tv' AND tmdb_id IS NOT NULL THEN tmdb_id ELSE id END";
+
         // Get total count
         const countResult = getOne<{ count: number }>(
-            `SELECT COUNT(*) as count FROM media ${whereClause}`,
+            `SELECT COUNT(*) as count FROM (
+                SELECT 1 FROM media 
+                ${whereClause} 
+                ${groupClause}
+            ) as grouped`,
             params
         );
         const total = countResult?.count || 0;
@@ -106,6 +113,7 @@ router.get('/', (req, res) => {
         browser_compatible, has_subtitles, duration_seconds, added_at
       FROM media 
       ${whereClause}
+      ${groupClause}
       ORDER BY ${sortColumn} ${sortOrder} NULLS LAST
       LIMIT ? OFFSET ?`,
             [...params, limitNum, offset]

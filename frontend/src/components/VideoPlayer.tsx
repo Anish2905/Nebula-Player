@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Play, Pause, Volume2, VolumeX, Volume1, Maximize, Minimize,
     RotateCcw, RotateCw, X, Loader2, Subtitles
@@ -8,16 +9,22 @@ import type { Media, SubtitleTrack } from '../types';
 
 interface VideoPlayerProps {
     media: Media;
+    nextEpisode?: Media | null;
     onClose?: () => void;
     autoPlay?: boolean;
 }
 
-export default function VideoPlayer({ media, onClose, autoPlay = true }: VideoPlayerProps) {
+export default function VideoPlayer({ media, nextEpisode, onClose, autoPlay = true }: VideoPlayerProps) {
+    const navigate = useNavigate();
     const videoRef = useRef<HTMLVideoElement>(null);
     const progressRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const saveIntervalRef = useRef<number | null>(null);
     const hideControlsTimeout = useRef<number | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const isDraggingRef = useRef(false); // Ref for event listeners
+    const isHoveringControls = useRef(false); // Ref to prevent hiding when interacting
+    const [nextEpisodeCountdown, setNextEpisodeCountdown] = useState<number | null>(null);
 
     // Load saved volume from localStorage (persisted across sessions)
     const getSavedVolume = (): number => {
@@ -82,10 +89,25 @@ export default function VideoPlayer({ media, onClose, autoPlay = true }: VideoPl
         if (hideControlsTimeout.current) {
             clearTimeout(hideControlsTimeout.current);
         }
+        // Don't hide if hovering controls or paused
+        if (!isPlaying || isHoveringControls.current) return;
+
         hideControlsTimeout.current = window.setTimeout(() => {
-            if (isPlaying && !showSettings && !showSubtitlesMenu) setShowControls(false);
+            if (isPlaying && !showSettings && !showSubtitlesMenu && !isHoveringControls.current) {
+                setShowControls(false);
+            }
         }, 3000);
     }, [isPlaying, showSettings, showSubtitlesMenu]);
+
+    // Update hide behavior when play state changes
+    useEffect(() => {
+        if (!isPlaying) {
+            setShowControls(true);
+            if (hideControlsTimeout.current) clearTimeout(hideControlsTimeout.current);
+        } else {
+            showControlsTemporarily();
+        }
+    }, [isPlaying, showControlsTemporarily]);
 
 
 
@@ -163,9 +185,19 @@ export default function VideoPlayer({ media, onClose, autoPlay = true }: VideoPl
 
         const handleTimeUpdate = () => {
             // Ignore time updates while seeking/loading to prevent glitchy progress bar
-            if (isLoading) return;
+            // Also ignore if user is dragging the scrubber
+            if (isLoading || isDraggingRef.current) return;
             // Display time = video current time
             setDisplayTime(video.currentTime || 0);
+
+            // Check for next episode auto-play
+            if (nextEpisode && video.duration && (video.duration - video.currentTime) <= 20) {
+                if (nextEpisodeCountdown === null) {
+                    setNextEpisodeCountdown(10);
+                }
+            } else {
+                if (nextEpisodeCountdown !== null) setNextEpisodeCountdown(null);
+            }
         };
 
         const handleProgress = () => {
@@ -269,6 +301,30 @@ export default function VideoPlayer({ media, onClose, autoPlay = true }: VideoPl
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, [media.id, autoPlay, savePosition, duration, media.duration_seconds]);
+
+    // Next Episode Countdown effect
+    useEffect(() => {
+        let countdownInterval: any;
+        if (nextEpisodeCountdown !== null && nextEpisodeCountdown > 0 && isPlaying) {
+            countdownInterval = setInterval(() => {
+                setNextEpisodeCountdown(prev => {
+                    if (prev && prev <= 1) {
+                        // Auto play next
+                        if (nextEpisode) navigate(`/play/${nextEpisode.id}`);
+                        return 0;
+                    }
+                    return (prev || 0) - 1;
+                });
+            }, 1000);
+        } else if (!isPlaying) {
+            // Pause countdown if video paused? 
+            // Or maybe we don't clear it, but the effect re-runs if isPlaying changes.
+        }
+
+        return () => {
+            if (countdownInterval) clearInterval(countdownInterval);
+        };
+    }, [nextEpisodeCountdown, isPlaying, nextEpisode, navigate]);
 
     // Keyboard shortcuts
     useEffect(() => {
@@ -429,16 +485,53 @@ export default function VideoPlayer({ media, onClose, autoPlay = true }: VideoPl
     };
 
     // Progress bar handlers
-    const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const handleScrubberMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        setIsDragging(true);
+        isDraggingRef.current = true;
+        handleScrubberMouseMove(e); // Update immediately on click
+    };
+
+    const handleScrubberMouseMove = useCallback((e: MouseEvent | React.MouseEvent) => {
         const progressBar = progressRef.current;
         if (!progressBar) return;
 
         const rect = progressBar.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const percent = Math.max(0, Math.min(1, x / rect.width));
+        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const percent = x / rect.width;
         const dur = duration || media.duration_seconds || 0;
-        seekToTime(percent * dur);
-    };
+        const newTime = percent * dur;
+
+        setDisplayTime(newTime);
+    }, [duration, media.duration_seconds]);
+
+    const handleScrubberMouseUp = useCallback((e: MouseEvent) => {
+        if (!isDraggingRef.current) return;
+
+        const progressBar = progressRef.current;
+        if (progressBar) {
+            const rect = progressBar.getBoundingClientRect();
+            const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+            const percent = x / rect.width;
+            const dur = duration || media.duration_seconds || 0;
+            const targetTime = percent * dur;
+
+            seekToTime(targetTime);
+        }
+        setIsDragging(false);
+        isDraggingRef.current = false;
+    }, [duration, media.duration_seconds, seekToTime]);
+
+    // Attach global mouse listeners when dragging
+    useEffect(() => {
+        if (isDragging) {
+            window.addEventListener('mousemove', handleScrubberMouseMove);
+            window.addEventListener('mouseup', handleScrubberMouseUp);
+        }
+        return () => {
+            window.removeEventListener('mousemove', handleScrubberMouseMove);
+            window.removeEventListener('mouseup', handleScrubberMouseUp);
+        };
+    }, [isDragging, handleScrubberMouseMove, handleScrubberMouseUp]);
 
     const actualDuration = duration || media.duration_seconds || 0;
     const progress = actualDuration > 0 ? (displayTime / actualDuration) * 100 : 0;
@@ -521,12 +614,20 @@ export default function VideoPlayer({ media, onClose, autoPlay = true }: VideoPl
             <div
                 className={`absolute bottom-0 left-0 right-0 bg-linear-to-t from-black/95 via-black/70 to-transparent pt-24 pb-4 px-4 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
                     }`}
+                onMouseEnter={() => {
+                    isHoveringControls.current = true;
+                    if (hideControlsTimeout.current) clearTimeout(hideControlsTimeout.current);
+                }}
+                onMouseLeave={() => {
+                    isHoveringControls.current = false;
+                    showControlsTemporarily();
+                }}
             >
                 {/* Progress Bar */}
                 <div
                     ref={progressRef}
                     className="relative h-2 bg-white/20 rounded-full cursor-pointer group mb-4 hover:h-3 transition-all"
-                    onClick={handleProgressClick}
+                    onMouseDown={handleScrubberMouseDown}
                 >
                     {/* Buffered */}
                     <div
@@ -699,6 +800,31 @@ export default function VideoPlayer({ media, onClose, autoPlay = true }: VideoPl
                     Space: Play • J/L: ±30s • ←/→: ±10s • 0-9: Jump • M: Mute • F: Fullscreen
                 </div>
             </div>
+
+            {/* Next Episode Overlay */}
+            {nextEpisode && nextEpisodeCountdown !== null && (
+                <div className="absolute bottom-32 right-8 bg-gray-900/90 border border-gray-700 p-4 rounded-lg shadow-2xl animate-fadeInUp max-w-sm z-50">
+                    <p className="text-sm text-gray-400 mb-1">Up Next in {nextEpisodeCountdown}s</p>
+                    <h3 className="text-white font-semibold mb-3 line-clamp-1">
+                        S{nextEpisode.season_number} E{nextEpisode.episode_number} - {nextEpisode.episode_title || nextEpisode.title}
+                    </h3>
+
+                    <div className="flex gap-3">
+                        <button
+                            onClick={() => navigate(`/play/${nextEpisode.id}`)}
+                            className="flex-1 bg-white text-black py-2 px-4 rounded font-medium hover:bg-gray-200 transition-colors"
+                        >
+                            Play Now
+                        </button>
+                        <button
+                            onClick={() => setNextEpisodeCountdown(null)}
+                            className="px-3 py-2 text-gray-400 hover:text-white transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
