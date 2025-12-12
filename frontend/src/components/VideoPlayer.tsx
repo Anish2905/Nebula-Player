@@ -24,6 +24,7 @@ export default function VideoPlayer({ media, nextEpisode, onClose, autoPlay = tr
     const [isDragging, setIsDragging] = useState(false);
     const isDraggingRef = useRef(false); // Ref for event listeners
     const isHoveringControls = useRef(false); // Ref to prevent hiding when interacting
+    const isLoadingRef = useRef(true); // Ref to track loading state in listeners
     const [nextEpisodeCountdown, setNextEpisodeCountdown] = useState<number | null>(null);
 
     // Load saved volume from localStorage (persisted across sessions)
@@ -164,15 +165,18 @@ export default function VideoPlayer({ media, nextEpisode, onClose, autoPlay = tr
 
         const handleCanPlay = () => {
             setIsLoading(false);
+            isLoadingRef.current = false;
         };
 
         const handleWaiting = () => {
             setIsLoading(true);
+            isLoadingRef.current = true;
         };
 
         const handlePlaying = () => {
             setIsLoading(false);
             setIsPlaying(true);
+            isLoadingRef.current = false;
         };
 
         const handleMetadata = () => {
@@ -186,7 +190,7 @@ export default function VideoPlayer({ media, nextEpisode, onClose, autoPlay = tr
         const handleTimeUpdate = () => {
             // Ignore time updates while seeking/loading to prevent glitchy progress bar
             // Also ignore if user is dragging the scrubber
-            if (isLoading || isDraggingRef.current) return;
+            if (isLoadingRef.current || isDraggingRef.current) return;
             // Display time = video current time
             setDisplayTime(video.currentTime || 0);
 
@@ -627,6 +631,7 @@ export default function VideoPlayer({ media, nextEpisode, onClose, autoPlay = tr
                 <div
                     ref={progressRef}
                     className="relative h-2 bg-white/20 rounded-full cursor-pointer group mb-4 hover:h-3 transition-all"
+                    style={{ touchAction: 'none' }}
                     onMouseDown={handleScrubberMouseDown}
                 >
                     {/* Buffered */}
@@ -641,7 +646,7 @@ export default function VideoPlayer({ media, nextEpisode, onClose, autoPlay = tr
                     />
                     {/* Thumb */}
                     <div
-                        className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-teal-500 rounded-full shadow-lg scale-0 group-hover:scale-100 transition-transform"
+                        className={`absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-teal-500 rounded-full shadow-lg transition-transform ${isDragging ? 'scale-100' : 'scale-0 group-hover:scale-100'}`}
                         style={{ left: `calc(${progress}% - 8px)` }}
                     />
                 </div>
